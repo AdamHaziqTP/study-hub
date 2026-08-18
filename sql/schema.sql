@@ -102,14 +102,40 @@ CREATE TABLE IF NOT EXISTS study_notes (
 CREATE INDEX IF NOT EXISTS idx_study_notes_user_id ON study_notes (user_id);
 CREATE INDEX IF NOT EXISTS idx_study_notes_study_id ON study_notes (study_id);
 
--- 4. Study Assessments (qualitative evidence profile)
+-- 4. Study Assessments (qualitative evidence profile — Task 10, regenerable)
+--    Two connected outputs, generated as ONE assessment per study:
+--      (1) EVIDENCE CONTEXT — plain-language "why each factor matters" for
+--          design, sample size, population, training status, duration, and
+--          measurement. NO numerical/qualitative credibility score — the app
+--          surfaces the factors and lets the user judge for themselves.
+--      (2) WHAT THIS MIGHT MEAN FOR TRAINING (Job 3) — cautious, clearly
+--          labelled practical interpretation, with explicit "what this does
+--          NOT mean" cautions.
+--    Same trust model as study_context / study_simplifications: derived AI
+--    output designed to be wiped + regenerated, keyed 1:1 by study_id.
+--
+--    Task 10 migration: the original placeholder shape was RLS-locked
+--    (SELECT-only, no INSERT policy) and had no columns for training status,
+--    measurement, training application, or the "does NOT mean" cautions, so
+--    NO rows can exist — a drop-and-recreate is zero-loss (fresh databases
+--    no-op). `source_info` records what the AI actually read.
+DROP TABLE IF EXISTS study_assessments;
+
 CREATE TABLE IF NOT EXISTS study_assessments (
   study_id UUID REFERENCES studies(id) ON DELETE CASCADE PRIMARY KEY,
-  study_design_context TEXT,
+  -- Evidence context: plain-language WHY each factor matters for THIS study.
+  design_context TEXT,
   sample_size_context TEXT,
-  duration_context TEXT,
   population_context TEXT,
-  relevance_context TEXT,
+  training_status_context TEXT,
+  duration_context TEXT,
+  measurement_context TEXT,
+  -- Job 3: cautious practical interpretation, explicitly labelled.
+  training_application TEXT,
+  training_cautions TEXT,
+  -- Which input the AI actually read when generating this assessment:
+  -- "full_text" | "abstract_only" | "provided_text"
+  source_info TEXT,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
@@ -308,9 +334,21 @@ CREATE POLICY "Users can manage their own notes" ON study_notes
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
+-- === study_assessments = shared REGENERABLE evidence profile =============
+-- Task 10: identical trust model to study_context / study_simplifications —
+-- SELECT + INSERT + UPDATE (the server-side /api/save-assessment upserts on
+-- study_id). DELETE stays locked; a full-row upsert replaces content.
 DROP POLICY IF EXISTS "Public read study assessments" ON study_assessments;
 CREATE POLICY "Public read study assessments" ON study_assessments
   FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Public insert study assessments" ON study_assessments;
+CREATE POLICY "Public insert study assessments" ON study_assessments
+  FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public update study assessments" ON study_assessments;
+CREATE POLICY "Public update study assessments" ON study_assessments
+  FOR UPDATE USING (true) WITH CHECK (true);
 
 
 GRANT ALL ON public.study_notes TO authenticated;

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import AuthStatus from "@/components/AuthStatus";
 import StudyReferences from "@/components/StudyReferences";
 import type { PubMedStudy } from "@/lib/pubmed";
-import type { StudyContext, StudySimplification } from "@/lib/ai";
+import type { StudyContext, StudySimplification, StudyAssessment } from "@/lib/ai";
 import PersonalNotes from "./PersonalNotes";
 
 interface StudyDetailProps {
@@ -20,6 +20,9 @@ interface StudyDetailProps {
   /** Previously-generated plain-English simplification (null when none exists). */
   savedSimplification?: StudySimplification | null;
   savedSimplificationSourceInfo?: string | null;
+  /** Previously-generated qualitative evidence profile (null when none exists). */
+  savedAssessment?: StudyAssessment | null;
+  savedAssessmentSourceInfo?: string | null;
 }
 
 type ContextState = "idle" | "loading" | "done" | "error";
@@ -46,6 +49,8 @@ export default function StudyDetail({
   savedSourceInfo = null,
   savedSimplification = null,
   savedSimplificationSourceInfo = null,
+  savedAssessment = null,
+  savedAssessmentSourceInfo = null,
 }: StudyDetailProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -82,6 +87,26 @@ export default function StudyDetail({
   const [simplificationSaveError, setSimplificationSaveError] = useState<
     string | null
   >(null);
+
+  // Qualitative evidence profile (Job 3 / Task 10) state — same regenerable
+  // pattern as the context and simplification blocks: rendered immediately
+  // when saved in the DB, otherwise generated on demand and persisted to
+  // `study_assessments`. It powers BOTH the "Evidence context" section AND
+  // the "What this might mean for training" section below.
+  const [assessmentState, setAssessmentState] = useState<ContextState>(
+    savedAssessment ? "done" : "idle"
+  );
+  const [assessment, setAssessment] = useState<StudyAssessment | null>(
+    savedAssessment
+  );
+  const [assessmentSourceInfo, setAssessmentSourceInfo] = useState<string | null>(
+    savedAssessmentSourceInfo
+  );
+  const [assessmentError, setAssessmentError] = useState<string | null>(null);
+  const [savingAssessment, setSavingAssessment] = useState(false);
+  const [assessmentSaveError, setAssessmentSaveError] = useState<string | null>(
+    null
+  );
 
   const handleSave = async () => {
     setSaving(true);
@@ -162,6 +187,63 @@ export default function StudyDetail({
       setSimplificationError(
         err instanceof Error ? err.message : "Simplification failed"
       );
+    }
+  };
+
+  /**
+   * Generate the qualitative evidence profile (Job 3): call /api/assess-study,
+   * then persist the validated result into the regenerable study_assessments
+   * table (/api/save-assessment). Persistence failure is surfaced but does
+   * NOT hide the freshly generated profile.
+   */
+  const handleGenerateAssessment = async () => {
+    setAssessmentState("loading");
+    setAssessmentError(null);
+    setAssessmentSaveError(null);
+    try {
+      const res = await fetch("/api/assess-study", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pmid: study.pmid }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error ?? "Assessment failed");
+      }
+      const json = await res.json();
+      const newAssessment = json.assessment as StudyAssessment;
+      const newSourceInfo = json.sourceInfo as string;
+
+      setAssessment(newAssessment);
+      setAssessmentSourceInfo(newSourceInfo);
+      setAssessmentState("done");
+
+      // Persist into the regenerable study_assessments table.
+      setSavingAssessment(true);
+      try {
+        const saveRes = await fetch("/api/save-assessment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            study,
+            assessment: newAssessment,
+            sourceInfo: newSourceInfo,
+          }),
+        });
+        if (!saveRes.ok) {
+          const saveJson = await saveRes.json().catch(() => ({}));
+          throw new Error(saveJson.error ?? "Save failed");
+        }
+      } catch (saveErr) {
+        setAssessmentSaveError(
+          saveErr instanceof Error ? saveErr.message : "Failed to persist assessment"
+        );
+      } finally {
+        setSavingAssessment(false);
+      }
+    } catch (err) {
+      setAssessmentState("error");
+      setAssessmentError(err instanceof Error ? err.message : "Assessment failed");
     }
   };
 
@@ -493,34 +575,170 @@ export default function StudyDetail({
           ) : null}
         </section>
 
-        {/* ============ EVIDENCE CONTEXT ============ */}
+        {/* ============ EVIDENCE CONTEXT (Job 3 / Task 10) ============ */}
         <section className="mb-10">
-          <h2 className="text-lg font-bold mb-4 pb-2 border-b border-gray-200">
-            Evidence context
-          </h2>
-          <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white">
-            <p className="text-sm text-gray-500">
-              This section will surface the factors that affect how broadly this
-              study can be interpreted - sample size, study design, population,
-              training status, duration, and measurement - with plain-language
-              explanations of <em>why each factor matters</em>. No numerical
-              "credibility score"; you'll get the context to judge for yourself.
-            </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-2 border-b border-gray-200">
+            <h2 className="text-lg font-bold">Evidence context</h2>
+            <div className="flex items-center gap-3">
+              {assessmentSourceInfo && (
+                <SourceInfoBadge sourceInfo={assessmentSourceInfo} />
+              )}
+              <button
+                onClick={handleGenerateAssessment}
+                disabled={assessmentState === "loading" || savingAssessment}
+                className="bg-teal-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-teal-700 disabled:opacity-50 transition-colors text-sm"
+              >
+                {assessmentState === "loading"
+                  ? "Assessing..."
+                  : savingAssessment
+                    ? "Saving..."
+                    : savedAssessment
+                      ? "Regenerate assessment"
+                      : "Generate assessment"}
+              </button>
+            </div>
           </div>
+
+          {assessmentState === "error" && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              Failed to generate the assessment.
+              {assessmentError ? ` ${assessmentError}` : ""}
+            </div>
+          )}
+
+          {assessmentState === "done" && assessmentSaveError && (
+            <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+              Assessment generated, but could not be saved to the library.
+              {assessmentSaveError ? ` ${assessmentSaveError}` : ""}
+            </div>
+          )}
+
+          {assessmentState === "loading" && (
+            <div className="space-y-3">
+              {[0, 1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="p-4 rounded-xl border border-gray-200 bg-white animate-pulse"
+                >
+                  <div className="h-3 w-40 bg-gray-200 rounded mb-3" />
+                  <div className="h-3 w-full bg-gray-100 rounded mb-1.5" />
+                  <div className="h-3 w-4/5 bg-gray-100 rounded" />
+                </div>
+              ))}
+              <p className="text-sm text-gray-500 text-center pt-1">
+                Explaining why the study's design, sample, and measurements matter...
+              </p>
+            </div>
+          )}
+
+          {assessmentState === "done" && assessment ? (
+            <div className="space-y-3">
+              <AssessmentFactor
+                label="Study design"
+                value={assessment.design_context}
+              />
+              <AssessmentFactor
+                label="Sample size"
+                value={assessment.sample_size_context}
+              />
+              <AssessmentFactor
+                label="Population"
+                value={assessment.population_context}
+              />
+              <AssessmentFactor
+                label="Training status"
+                value={assessment.training_status_context}
+              />
+              <AssessmentFactor
+                label="Duration"
+                value={assessment.duration_context}
+              />
+              <AssessmentFactor
+                label="Measurement"
+                value={assessment.measurement_context}
+              />
+              <p className="text-xs text-gray-500 italic pt-1">
+                No credibility score — these are the factors to weigh when
+                judging how far this study can be applied.
+              </p>
+            </div>
+          ) : assessmentState === "idle" ? (
+            <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white">
+              <p className="text-sm text-gray-500">
+                This section will surface the factors that affect how broadly this
+                study can be interpreted - sample size, study design, population,
+                training status, duration, and measurement - with plain-language
+                explanations of <em>why each factor matters</em>. No numerical
+                "credibility score"; you'll get the context to judge for yourself.
+              </p>
+            </div>
+          ) : null}
         </section>
 
-        {/* ============ APPLICATION ============ */}
+        {/* ============ APPLICATION (Job 3 / Task 10) ============ */}
         <section className="mb-10">
-          <h2 className="text-lg font-bold mb-4 pb-2 border-b border-gray-200">
-            What this might mean for training
-          </h2>
-          <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white">
-            <p className="text-sm text-gray-500">
-              This section will translate the findings into practical training
-              considerations - clearly labelled as <em>interpretation</em>, with
-              explicit cautions about what this study does <em>not</em> establish.
-            </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-2 border-b border-gray-200">
+            <h2 className="text-lg font-bold">What this might mean for training</h2>
+            <div className="flex items-center gap-3">
+              {assessmentState === "done" && (
+                <span className="text-xs font-semibold px-3 py-1 rounded-full bg-amber-100 text-amber-800">
+                  Interpretation — not established fact
+                </span>
+              )}
+            </div>
           </div>
+
+          {assessmentState === "error" && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              Failed to generate the training interpretation.
+              {assessmentError ? ` ${assessmentError}` : ""}
+            </div>
+          )}
+
+          {assessmentState === "done" && assessment ? (
+            <div className="space-y-3">
+              <div className="p-4 rounded-xl border border-amber-200 bg-amber-50">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                  If this generalises, it might suggest...
+                </h3>
+                {assessment.training_application ? (
+                  <p className="text-sm text-gray-800 leading-relaxed">
+                    {assessment.training_application}
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">
+                    Not provided for this study.
+                  </p>
+                )}
+              </div>
+              <div className="p-4 rounded-xl border border-red-200 bg-red-50">
+                <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                  What this does NOT mean
+                </h3>
+                {assessment.training_cautions ? (
+                  <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line">
+                    {assessment.training_cautions}
+                  </p>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">
+                    Not provided for this study.
+                  </p>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 italic">
+                This is cautious interpretation by the AI, clearly separate from
+                what the study actually states — use it to think, not as advice.
+              </p>
+            </div>
+          ) : assessmentState === "idle" ? (
+            <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white">
+              <p className="text-sm text-gray-500">
+                This section will translate the findings into practical training
+                considerations - clearly labelled as <em>interpretation</em>, with
+                explicit cautions about what this study does <em>not</em> establish.
+              </p>
+            </div>
+          ) : null}
         </section>
 
         {/* ============ REFERENCES IN ARTICLES (Task 7) ============ */}
@@ -594,6 +812,22 @@ function BreakdownSection({
     <div className="p-4 rounded-xl border border-gray-200 bg-white">
       <h3 className="text-sm font-semibold text-gray-700 mb-2">{label}</h3>
       {children}
+    </div>
+  );
+}
+
+/** Evidence-context factor card: label + plain-language "why it matters". */
+function AssessmentFactor({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div className="p-4 rounded-xl border border-teal-100 bg-teal-50/50">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-teal-800 mb-1.5">
+        {label}
+      </h3>
+      {value ? (
+        <p className="text-sm text-gray-800 leading-relaxed">{value}</p>
+      ) : (
+        <p className="text-sm text-gray-400 italic">Not provided.</p>
+      )}
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { fetchPubMedStudyById, type PubMedStudy } from "@/lib/pubmed";
 import { notFound } from "next/navigation";
 import StudyDetail from "./StudyDetail";
-import type { StudyContext, StudySimplification } from "@/lib/ai";
+import type { StudyContext, StudySimplification, StudyAssessment } from "@/lib/ai";
 
 interface PageProps {
   params: Promise<{ pmid: string }>;
@@ -99,6 +99,31 @@ export default async function StudyPage({ params }: PageProps) {
       savedSimplificationSourceInfo = simplificationRow.source_info ?? null;
     }
 
+    // Load any previously-generated qualitative assessment (Task 10, Job 3)
+    // from the DB (DB-first, same regenerable pattern as context/simplification).
+    const { data: assessmentRow } = await supabase
+      .from("study_assessments")
+      .select("*")
+      .eq("study_id", saved.id)
+      .maybeSingle();
+
+    let savedAssessment: StudyAssessment | null = null;
+    let savedAssessmentSourceInfo: string | null = null;
+
+    if (assessmentRow) {
+      savedAssessment = {
+        design_context: assessmentRow.design_context,
+        sample_size_context: assessmentRow.sample_size_context,
+        population_context: assessmentRow.population_context,
+        training_status_context: assessmentRow.training_status_context,
+        duration_context: assessmentRow.duration_context,
+        measurement_context: assessmentRow.measurement_context,
+        training_application: assessmentRow.training_application,
+        training_cautions: assessmentRow.training_cautions,
+      };
+      savedAssessmentSourceInfo = assessmentRow.source_info ?? null;
+    }
+
     return (
       <StudyDetail
         study={study}
@@ -108,6 +133,8 @@ export default async function StudyPage({ params }: PageProps) {
         savedSourceInfo={savedSourceInfo}
         savedSimplification={savedSimplification}
         savedSimplificationSourceInfo={savedSimplificationSourceInfo}
+        savedAssessment={savedAssessment}
+        savedAssessmentSourceInfo={savedAssessmentSourceInfo}
       />
     );
   }

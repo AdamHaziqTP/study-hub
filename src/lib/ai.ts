@@ -23,6 +23,12 @@
  * Job 2 = EXPLAIN: plain-English re-explanation for a curious lifter
  *   (simplifyStudy) — the "In plain English" block on the study page.
  *
+ * Job 3 = TRANSLATE CAUTIOUSLY: qualitative evidence profile
+ *   (assessStudy) — plain-language *why each factor matters* (design, sample
+ *   size, population, training status, duration, measurement) with NO
+ *   credibility score, PLUS clearly-labelled "what this might mean for
+ *   training" with explicit "what this does NOT mean" cautions.
+ *
  * Job 3b = CLAIM ALIGNMENT: verdict on whether a user's claim accurately
  *   represents its linked studies (assessClaimAlignment). Cheap fast model
  *   only — no separate heavier model.
@@ -59,6 +65,32 @@ export interface StudySimplification {
   simplified_text: string;
 }
 
+/**
+ * Job 3 output: the qualitative evidence profile for a study (Task 10).
+ *
+ * Two connected sections, generated as ONE assessment:
+ *   1. EVIDENCE CONTEXT — plain-language "why each factor matters" for this
+ *      study (design, sample size, population, training status, duration,
+ *      measurement). There is deliberately NO score/rating — the app surfaces
+ *      the factors and lets the user judge for themselves (project rule #1).
+ *   2. WHAT THIS MIGHT MEAN FOR TRAINING — cautious practical interpretation,
+ *      clearly labelled, with explicit "what this does NOT mean" cautions.
+ *
+ * All fields are generated FROM the source (abstract/full text); fields only
+ * carry explanations grounded in what the source states (or notes when a
+ * factor is simply not described).
+ */
+export interface StudyAssessment {
+  design_context: string | null;
+  sample_size_context: string | null;
+  population_context: string | null;
+  training_status_context: string | null;
+  duration_context: string | null;
+  measurement_context: string | null;
+  training_application: string | null;
+  training_cautions: string | null;
+}
+
 export type ClaimAlignmentVerdict = "aligned" | "partially_aligned" | "unaligned";
 
 /** Job 3b output: a verdict on whether a claim accurately represents its studies. */
@@ -79,8 +111,9 @@ function getApiKey(): string {
 
 /**
  * Resolve the model for EVERY AI job: the DEEPSEEK_MODEL env override, or the
- * cheap fast default ("deepseek-chat"). Shared by extract, simplify, and claim
- * alignment — per §8 there is intentionally no separate heavier model.
+ * cheap fast default ("deepseek-chat"). Shared by extract, simplify, assess,
+ * and claim alignment — per §8 there is intentionally no separate heavier
+ * model.
  */
 function getModel(): string {
   return process.env.DEEPSEEK_MODEL ?? "deepseek-chat";
@@ -279,6 +312,100 @@ export async function simplifyStudy(input: {
   }
 
   return { simplified_text: parsed.simplified_text.trim() };
+}
+
+const ASSESS_SYSTEM_PROMPT = `You are an evidence-context writer for an exercise-science research app.
+Given a study title, abstract, and (when provided) full text, produce a qualitative evidence
+profile with TWO clearly separated sections.
+
+SECTION 1 — EVIDENCE CONTEXT (plain-language "why each factor matters"):
+For each of the six factors below, explain in plain English WHY that factor matters for
+interpreting THIS study, grounded in what the source actually states:
+- design_context: the study design and what that design can and cannot support (e.g. randomized
+  controlled trial vs uncontrolled observation).
+- sample_size_context: the number of participants and how that affects precision/generalisability.
+- population_context: who exactly was studied (age, sex, body parts), and whether the results are
+  likely to apply to other people.
+- training_status_context: what the source says (or does not say) about participants' training
+  history and why that matters for a lifter.
+- duration_context: how long the intervention lasted and how that affects what the results can say
+  about long-term training.
+- measurement_context: WHAT was measured and HOW (e.g. MRI muscle volume, or a questionnaire), and
+  any caveats about that measurement.
+CRITICAL RULES for Section 1:
+- NEVER give a numerical or qualitative credibility score, grade, rating, or verdict on how
+  "reliable" the study is (no "7/10", no "high quality", no "reliable"). Surface the factors and
+  let the user judge for themselves.
+- If a factor is NOT described in the source, say so explicitly and explain what that gap means
+  (e.g. "Training status was not described, so it is unclear...").
+- Stay grounded in stated facts. Do not invent details.
+
+SECTION 2 — WHAT THIS MIGHT MEAN FOR TRAINING (Job 3, clearly labelled interpretation):
+- training_application: a cautious, practical interpretation of the findings for a normal lifter
+  choosing how to train. Frame it with hedging ("might", "may", "if this generalises").
+- training_cautions: explicit "what this does NOT mean" cautions — the boundaries the study does
+  NOT establish (e.g. it does NOT prove X works for everyone, does NOT mean Y is useless, does NOT
+  establish long-term effects). Make these explicit "This does NOT mean..." statements.
+CRITICAL RULES for Section 2:
+- This is interpretation, not established fact — signal that clearly with hedging language.
+- Keep it strictly bounded by what the study actually tested. Never give general exercise advice
+  beyond the study's scope.
+- Every "does NOT mean" caution must trace to a real limitation implied by the stated design
+  (sample, population, duration, measurement), never invented.
+
+Write each field as 2-4 plain-English sentences (about 40-70 words each). Be specific and honest;
+avoid filler.
+
+Return ONLY valid JSON matching this exact shape:
+{
+  "design_context": string,
+  "sample_size_context": string,
+  "population_context": string,
+  "training_status_context": string,
+  "duration_context": string,
+  "measurement_context": string,
+  "training_application": string,
+  "training_cautions": string
+}`;
+
+/**
+ * Job-3 assessment: title + abstract (+ optional full text) -> qualitative
+ * evidence profile (evidence context + "what this might mean for training").
+ * Uses the SAME cheap fast model as every other job (shared callDeepSeek —
+ * getModel() — deepseek-chat default).
+ */
+export async function assessStudy(input: {
+  title: string;
+  abstract: string;
+  fullText?: string | null;
+}): Promise<StudyAssessment> {
+  const parts = [`Title: ${input.title}`, `Abstract:\n${input.abstract}`];
+  if (input.fullText) {
+    parts.push(`Full text (excerpt):\n${input.fullText}`);
+  }
+
+  const raw = await callDeepSeek(ASSESS_SYSTEM_PROMPT, parts.join("\n\n"));
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("AI output was not valid JSON");
+  }
+
+  const str = (v: unknown): string | null =>
+    typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+
+  return {
+    design_context: str(parsed.design_context),
+    sample_size_context: str(parsed.sample_size_context),
+    population_context: str(parsed.population_context),
+    training_status_context: str(parsed.training_status_context),
+    duration_context: str(parsed.duration_context),
+    measurement_context: str(parsed.measurement_context),
+    training_application: str(parsed.training_application),
+    training_cautions: str(parsed.training_cautions),
+  };
 }
 
 const ASSESS_CLAIM_SYSTEM_PROMPT = `You are an evidence-integrity checker for an exercise-science research app.
