@@ -172,7 +172,7 @@ All of this is **committed and pushed** to GitHub (`main`).
 | `src/app/api/search-pubmed/route.ts` | API route exposing search (now just delegates to the shared lib) | Backend keeps the NCBI call server-side |
 | `src/app/api/save-study/route.ts` | POST endpoint: check-then-insert a study into `studies` | Wires the "Save to Library" button; INSERT-only per security review (§7) |
 | `src/app/study/[pmid]/page.tsx` | Server page: tries the saved DB copy first, falls back to a live PubMed fetch | Saved studies work even when NCBI is down; Next.js 16 `params`-as-`Promise` convention |
-| `src/app/study/[pmid]/StudyDetail.tsx` | The study detail UI | Implements the product rules: raw abstract on top, then breakdown / evidence context / training-application placeholders, Save + PubMed buttons |
+| `src/app/study/[pmid]/StudyDetail.tsx` | The study detail UI | Implements the product rules: raw abstract on top, then AI-generated study breakdown (validated `StudyContext` with `sourceInfo` badge), evidence context / training-application placeholders, Save + PubMed buttons |
 | `src/app/page.tsx` | Search home page; cards link to `/study/[pmid]` | The entry point of the Explorer |
 | `sql/schema.sql` | Full schema + RLS policies as a checked-in file | Database is reproducible; portfolio artifact showing the data-model reasoning |
 | `src/lib/ai.ts` | Server-only DeepSeek helper: **Job-1 extraction** (title + abstract + optional full text → validated `StudyContext`, with two-tier limitations) | Uses the cheap model by default (`deepseek-chat`); reads `DEEPSEEK_API_KEY`/`DEEPSEEK_MODEL` server-side; validates JSON before it can reach DB/UI; `identified_limitations` are derived interpretations each grounded in a `based_on` quoted fact |
@@ -201,6 +201,7 @@ All of this is **committed and pushed** to GitHub (`main`).
 - ✅ AI extraction pipeline (Job 1) — DeepSeek, `deepseek-chat` by default, validated output, test endpoint `/api/extract-context`
 - ✅ Full-text (PMC) reading — `pmcid` is read from the PubMed record itself (lag-free), full text is fetched for open-access papers and fed to the AI; `sourceInfo` reports which source was used
 - ✅ Two-tier limitations — `limitations` = what the paper states; `identified_limitations` = derived interpretations, each with a `based_on` quote from the stated design (e.g. MRI swelling risk, unknown training status)
+- ✅ **Study breakdown populated on the detail page** — "Generate Study Breakdown" action calls `/api/extract-context` and renders the validated `StudyContext` under the raw abstract, clearly separated, with a `sourceInfo` badge. Display only, no DB write (Task 2 done)
 - ✅ `tsc --noEmit` passes clean
 - ✅ Living doc (this file)
 
@@ -226,7 +227,7 @@ We are working through a 24-phase roadmap (from the project brief). Position ≈
 ### Immediate next steps (one small, testable step at a time)
 
 1. ✅ **AI extraction skeleton** — `src/lib/ai.ts` + `/api/extract-context` (uses `deepseek-chat`; validates JSON). Verified: abstracts only → `abstract_only`; PMC open-access → `full_text` with derived limitations (test: PMID 42605311 returned `sourceInfo: full_text`).
-2. **Populate the Study breakdown** on the detail page from the validated `StudyContext` fields (display only, no DB write yet).
+2. ✅ **Populate the Study breakdown** on the detail page from the validated `StudyContext` fields (display only, no DB write yet) — "Generate Study Breakdown" button in `StudyDetail.tsx` calls `/api/extract-context`; renders validated `StudyContext`, `sourceInfo` badge, loading/error states, identified-limitations with grounding quotes.
 3. **Persist extracted context** — store into the regenerable `study_context` table via a "Generate context" action on the study page.
 4. **Library page** (`/library`) — list saved studies (Evidence Notebook starting point).
 5. **Ranked search** — relevance ordering that never hides lower-ranked results.
@@ -263,14 +264,15 @@ This project is developed in short agent-chat sessions. A fresh agent should be 
 ### 12.2 Current task queue
 Current task:
 
-**Task 2 (do this next): Populate the Study breakdown on the detail page from validated `StudyContext` fields (display only, no DB write yet).**
-- Reference: `src/app/study/[pmid]/page.tsx` (server page) + `StudyDetail.tsx` (client UI, currently placeholder sections).
-- `/api/extract-context` already returns `{ study, context, sourceInfo }` where `context` is a validated `StudyContext` (`sample_size`, `population`, `training_status`, `duration`, `design`, `intervention`, `control`, `outcomes`, `findings`, `limitations`, `identified_limitations[]`).
-- Deliverable: the detail page shows the extracted breakdown under the raw abstract, clearly separated, with `sourceInfo` badge. Test on PMID **35819335** (abstract_only, paywalled) and **42605311** (full_text).
-- Do NOT write to DB yet.
+**Task 3 (do this next): Persist extracted context — "Generate context" action on the study page → upsert into `study_context` (regenerable).**
+- Reference: `src/app/study/[pmid]/StudyDetail.tsx` (client UI — the "Generate Study Breakdown" button already calls `/api/extract-context` and renders the validated `StudyContext` with a `sourceInfo` badge; Task 2 done).
+- Decide the auth/RLS boundary first: `study_context` is a shared derived table (RLS currently has "Public read study context" only). The likely pattern: a server-side API route (e.g. `/api/save-context`) that does check-then-upsert, mirroring `/api/save-study`'s INSERT-only philosophy — and consider whether to add an INSERT policy to `study_context` driven by the same "shared public library" reasoning as `studies`.
+- Deliverable: after generating a breakdown, the validated `StudyContext` is persisted to `study_context` (keyed by `study_id`, resolved from `studies.pmid`), and on revisiting the study page the saved context is loaded instead of requiring a re-extract. `identified_limitations` is NOT in the schema yet — decide how to represent it (recommend a `study_identified_limitations` child table with `study_id`, `limitation`, `based_on`; update `sql/schema.sql` + deploy).
+- Test: generate context on PMID **35819335**, confirm row in `study_context`, reload page and confirm it renders from DB without another AI call.
+
+Previously done (Task 2, previous session): ✅ **Populate the Study breakdown** from validated `StudyContext` (display only, no DB write) — "Generate Study Breakdown" button in `StudyDetail.tsx` calls `/api/extract-context`; renders validated `StudyContext` with `sourceInfo` badge, loading/error states, and identified-limitations grounding quotes.
 
 Then, in order:
-3. **Persist extracted context** — "Generate context" action on study page → upsert into `study_context` (regenerable). Decide auth/RLS boundary first.
 4. **Library page** (`/library`) — list saved studies from `studies`.
 5. **Ranked search** — relevance ordering that never hides results.
 6. **Notes on studies** — per-study personal notes (user-owned, needs auth).
@@ -284,7 +286,7 @@ Then, in order:
 - `src/app/api/extract-context/route.ts` — test endpoint (`sourceInfo`).
 - `src/app/api/save-study/route.ts` — INSERT-only check-then-insert.
 - `src/app/api/search-pubmed/route.ts` — search endpoint.
-- `src/app/study/[pmid]/page.tsx` + `StudyDetail.tsx` — detail page (current Task 2 target).
+- `src/app/study/[pmid]/page.tsx` + `StudyDetail.tsx` — detail page (current Task 3 target; "Generate Study Breakdown" button already renders validated `StudyContext` from `/api/extract-context`).
 - `src/app/page.tsx` — home search.
 - `sql/schema.sql` — schema + RLS.
 - `.env.example` — required env vars (never commit `.env.local`).
