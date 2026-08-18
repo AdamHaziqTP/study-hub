@@ -235,3 +235,75 @@ We are working through a 24-phase roadmap (from the project brief). Position ≈
 
 ### Workflow rule going forward
 > One small feature at a time → the plan/approach is explained first → implemented → tested → committed. No more autonomous large builds.
+
+---
+
+## 12. Session Handoff (READ THIS FIRST in a new chat)
+
+This project is developed in short agent-chat sessions. A fresh agent should be able to continue **from this file alone** plus the codebase — no conversation history needed.
+
+### How the loop works
+1. New chat: **"Read `PROJECT_NOTES.md` and the key files listed in §12.3, then implement the current task in §12.2."**
+2. Agent completes the task, updates this file's status/next-steps, commits + pushes.
+3. Agent tells the user the **next task in the same numbered format** (§12.2).
+4. User starts a new chat with step 1. Repeat.
+
+### 12.1 Non-negotiable project rules (transcript of the brief)
+- **Explorer-first:** a user searches → reads → understands → forms a conclusion → *then* writes. Never "write a claim then find a study that agrees" (confirmation-bias machine).
+- **Rank, don't filter:** search never hides low-relevance studies; it orders them.
+- **The AI is an interpreter, never the source:** raw abstract/full text is always shown first, unmodified. AI output goes in derived/regenerable tables (`study_context`), never overwriting raw `studies`.
+- **No credibility score.** No "87% reliable". Surface factors (design, n, population, duration, measure) + plain-language *why it matters*.
+- **Two-tier limitations:** `limitations` = what the paper states; `identified_limitations` = AI-derived, each with a required `based_on` quote from a stated fact. Never invented.
+- **Read full text when available:** via PMC (open access). `sourceInfo` field (`full_text` / `abstract_only` / `provided_text`) tells the UI what the AI actually read.
+- **Cheap model default:** `DEEPSEEK_MODEL` defaults to `deepseek-chat` in `src/lib/ai.ts`. Only use a stronger model for claim↔evidence alignment later.
+- **RLS:** `studies` = public SELECT + INSERT only (no UPDATE/DELETE). User-owned tables locked until auth.
+- **Next.js 16 gotchas:** dynamic `params` is a `Promise` (must await); check `node_modules/next/dist/docs/` before new Next features.
+- **Windows shell:** always use `npm.cmd`/`npx.cmd` in PowerShell (ps1 scripts are disabled); never chain with `&&` in PowerShell.
+
+### 12.2 Current task queue
+Current task:
+
+**Task 2 (do this next): Populate the Study breakdown on the detail page from validated `StudyContext` fields (display only, no DB write yet).**
+- Reference: `src/app/study/[pmid]/page.tsx` (server page) + `StudyDetail.tsx` (client UI, currently placeholder sections).
+- `/api/extract-context` already returns `{ study, context, sourceInfo }` where `context` is a validated `StudyContext` (`sample_size`, `population`, `training_status`, `duration`, `design`, `intervention`, `control`, `outcomes`, `findings`, `limitations`, `identified_limitations[]`).
+- Deliverable: the detail page shows the extracted breakdown under the raw abstract, clearly separated, with `sourceInfo` badge. Test on PMID **35819335** (abstract_only, paywalled) and **42605311** (full_text).
+- Do NOT write to DB yet.
+
+Then, in order:
+3. **Persist extracted context** — "Generate context" action on study page → upsert into `study_context` (regenerable). Decide auth/RLS boundary first.
+4. **Library page** (`/library`) — list saved studies from `studies`.
+5. **Ranked search** — relevance ordering that never hides results.
+6. **Notes on studies** — per-study personal notes (user-owned, needs auth).
+7. **Article/claim system** — consumes studies from the Explorer (Phase 13-15).
+8. Optional/stretch: evidence graph, AI simplification, claim alignment, polish, deploy, test, docs.
+
+### 12.3 Files to read on resume (fastest path to full context)
+- `PROJECT_NOTES.md` (this file — deep context + history)
+- `src/lib/pubmed.ts` — PubMed engine: `PubMedStudy` shape (`pmid`, `title`, `authors`, `journal`, `publicationDate`, `abstract`, `doi`, `pmcid`), `searchPubMed`, `fetchPubMedStudyById`, `findPmcid` (lag-free from record), `fetchFullText` (PMC, 12k cap), parsing.
+- `src/lib/ai.ts` — DeepSeek helper: `StudyContext` + `IdentifiedLimitation` types, `extractStudyContext(title, abstract, fullText?)`, `deepseek-chat` default, strict JSON validation.
+- `src/app/api/extract-context/route.ts` — test endpoint (`sourceInfo`).
+- `src/app/api/save-study/route.ts` — INSERT-only check-then-insert.
+- `src/app/api/search-pubmed/route.ts` — search endpoint.
+- `src/app/study/[pmid]/page.tsx` + `StudyDetail.tsx` — detail page (current Task 2 target).
+- `src/app/page.tsx` — home search.
+- `sql/schema.sql` — schema + RLS.
+- `.env.example` — required env vars (never commit `.env.local`).
+
+### 12.4 Verified status (don't re-verify unless asked)
+- PubMed search → parsed study cards: ✅ working.
+- Study detail page (DB-first, live fallback): ✅ HTTP 200.
+- Save to Library: ✅ working (RLS SELECT+INSERT applied in Supabase).
+- `/api/extract-context`: ✅ 35819335 → `abstract_only` + derived limitations; 42605311 → `full_text`.
+- `tsc --noEmit`: ✅ clean.
+- Git: clean on `main`, pushed (HEAD 728c412).
+
+### 12.5 Environment notes
+- `.env.local` already contains `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `DEEPSEEK_API_KEY` (user set it). `DEEPSEEK_MODEL` optional.
+- Dev server: restart after env change (`npm.cmd run dev`). If port 3000 busy: `taskkill /PID <pid> /F`.
+- Supabase project is live (don't re-run full schema unless asked; `sql/schema.sql` is source of truth).
+- Test PMIDs: **35819335** (the key "missing context" case), **42605311** (open access full text).
+
+### 12.6 Every session must end with
+1. Update this file (status, decisions, next-steps).
+2. Commit + push.
+3. State the next task as **one numbered item** in §12.2 format.
