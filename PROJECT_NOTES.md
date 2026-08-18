@@ -256,6 +256,7 @@ All of this is **committed and pushed** to GitHub (`main`).
 - ✅ **Post-deployment verification + polish (Task 12)** — every flow verified on the LIVE URL with PMIDs 35819335 + 42605311 (see §12.4); **one production-only bug found + fixed**: the AI-derived shared tables were missing table-level `GRANT`s to `anon` (raw-SQL-created tables get no default grants on Supabase; RLS policies alone aren't enough — Postgres enforces table privileges *before* RLS), which broke `/api/assess-claim`, DB-first rendering of saved AI output, and all three save endpoints with `permission denied for table`. Fix: explicit `GRANT`s added to `sql/schema.sql` (+ documented in README); **USER ACTION: run the grant block once in Supabase** (see §12.5). **Second issue fixed: default `Create Next App` metadata everywhere** → root layout now has real title/description/OG/twitter + `metadataBase` + title template; home/library/articles/graph export per-page metadata; the study page uses `generateMetadata` for dynamic per-study titles/descriptions/OG. Mobile polish: top bars + action rows now wrap on narrow screens (study page, library, articles, graph). `tsc --noEmit` clean AND `npm run build` passes.
 - ✅ `tsc --noEmit` passes clean
 - ✅ `npm run build` passes clean (Next.js 16 production build, Turbopack)
+- ✅ **Phase 2 Sprint 1 — Decouple AI from the Library (Task 14)** — `StudyDetail.tsx` auto-generates ALL THREE AI breakdowns (Study breakdown / In plain English / Evidence context + training application) into React state on load with **NO DB writes**; "Save to Library" is now the ONLY persistence path (saves the study + any generated AI state); the button becomes **"Remove from Library"** when saved, wired to `DELETE /api/study/[pmid]`; `studies` RLS gained a public DELETE policy + grant. `tsc --noEmit` clean AND `npm run build` passes with `/api/study/[pmid]` registered. **Live "Remove from Library" requires the §12.5 DELETE grant/policy block.**
 - ✅ Living doc (this file)
 
 **Editor note:** if VS Code shows "Cannot find module './StudyDetail'", it's a stale TS-server cache — the file exists and `tsc` resolves it. Restart the TS server (or save any file) to clear it.
@@ -326,11 +327,13 @@ This project is developed in short agent-chat sessions. A fresh agent should be 
 
 **DONE: Task 12 — Post-deployment verification + polish pass.** Committed + pushed as **`6129ce5`** + docs commit **`083772e`** (Vercel auto-deployed). Live verification results, the production-only grants bug, the schema-drift (`study_context.source_info`) bug, and the SEO/responsive polish are recorded in §10 and §12.4. **User action #1 (GRANT block) is DONE by the user; user action #2 (schema-drift migration) remains** — run the one-time `ALTER TABLE study_context ADD COLUMN IF NOT EXISTS ...` block in §12.5 so `/api/save-context` upserts succeed and saved Study breakdowns render DB-first on revisit. After that, Task 13 (signed-in verification) is the only remaining flow.
 
-Current task: **Task 13 — final verification of auth-gated flows on the live URL (user-driven, needs a GitHub sign-in).**
-- What: after applying the §12.5 GRANT block on the live Supabase, run the remaining **auth-gated browser flows end-to-end on the live URL** (these need a real GitHub sign-in, so the user runs them): GitHub sign-in → personal notes on a saved study → create an article with a claim + evidence link → claim alignment check → view the same data on `/graph`. Update §12.4 with the results. Any fixes follow the standard fix → `tsc --noEmit` → `npm run build` → commit + push → re-verify loop.
-- Why: Tasks 12 verified everything public (search/AI pipelines/save/library/metadata all work on production), but the user-owned RLS tables (notes/articles/claims/evidence_links) require an authenticated session — they render correctly as login-gated shells, and the schema is correct (verified locally + Live supabase table checks), but the full signed-in click-through is best confirmed by the application owner in a browser.
-- Deliverable: confirmation that personal notes, article creation, claim alignment, and the evidence graph all work signed-in on production.
-- Notes: this is a short user-run verification + a docs update — no code changes are expected unless something surfaces.
+**DONE: Task 14 — Phase 2 Sprint 1: Decouple AI generation from the Library** (see §10 / §12.4). `StudyDetail.tsx` auto-generates all three AI breakdowns into React state on load (NO DB writes); "Save to Library" is now the ONLY persistence path; the button becomes "Remove from Library" when saved, wired to `DELETE /api/study/[pmid]`; `studies` RLS gained a public DELETE policy + grant. **User action:** run the §12.5 DELETE grant/policy block.
+
+Current task: **Task 15 — Smart AI-Assisted Search (layman natural language → DeepSeek → optimized PubMed query).**
+- What: the main search bar should accept natural, layman questions (e.g. "how many times a week should I train?"). A new API route passes the question to DeepSeek to translate it into an optimized PubMed query (title/abstract keywords, MeSH-ish terms, boolean operators), fetches the most relevant studies with the existing `searchPubMed` flow, and renders results normally. Add a visible "AI-translated query" disclosure showing the generated PubMed query.
+- Why: Phase 2's core AI workflow (auto-generate + manual save) is done; Task 15 makes Explorer feel like a research assistant.
+- Deliverable: natural-language search works end-to-end on the home page with a visible translated query.
+- Notes: keep existing term search as fallback; AI translation must stay server-side (DeepSeek key); follow the read `PROJECT_NOTES.md` + §12.3 → implement → `tsc --noEmit` → `npm run build` → commit + push → define Task 16 loop.
 
 ### 12.3 Files to read on resume (fastest path to full context)
 - `PROJECT_NOTES.md` (this file — deep context + history)
@@ -394,7 +397,7 @@ Current task: **Task 13 — final verification of auth-gated flows on the live U
 - Test PMIDs: **35819335** (the key "missing context" case), **42605311** (open access full text).
 - **Task 12 user action #1 — one-time GRANT block (DONE by user):** the AI-derived shared tables were created by raw SQL, so they have NO default table grants. User ran this once against the live project (idempotent; already reflected in `sql/schema.sql` for fresh setups):
   ```sql
-  GRANT SELECT, INSERT ON public.studies TO anon, authenticated;
+  GRANT SELECT, INSERT, DELETE ON public.studies TO anon, authenticated;
   GRANT SELECT, INSERT, UPDATE ON public.study_context TO anon, authenticated;
   GRANT SELECT, INSERT, DELETE ON public.study_identified_limitations TO anon, authenticated;
   GRANT SELECT, INSERT, UPDATE ON public.study_simplifications TO anon, authenticated;
@@ -412,3 +415,26 @@ Current task: **Task 13 — final verification of auth-gated flows on the live U
 1. Update this file (status, decisions, next-steps).
 2. Commit + push.
 3. State the next task as **one numbered item** in §12.2 format.
+
+---
+
+## 13. Phase 2 Roadmap (Product Polish)
+
+Phase 2 layers product-polish sprints on top of the deployed Phase 1 (Study Explorer + Evidence Notebook + Graph). The queue below was distilled from user feedback; tasks are executed one at a time via the §12 loop. Use this as the roadmap for upcoming feature work.
+
+1. [x] Decouple AI generation from the Library (Task 14, Sprint 1) - auto-generate AI breakdowns on load in React state (no DB writes); manual Save to Library is the only persistence path; Remove from Library via DELETE /api/study/[pmid].
+2. [ ] Smart AI-Assisted Search (Task 15, Sprint 1) - layman natural language to DeepSeek to optimized PubMed query with visible translated-query disclosure.
+3. [ ] Search persistence - push the query to the URL so Back preserves results.
+4. [ ] Pagination / Load More - remove the hardcoded 10-study limit.
+5. [ ] Sticky search header - the search bar sticks to the top while scrolling results.
+6. [ ] Visited links indicator - visual marker for studies already clicked.
+7. [ ] Quick-save bookmark icon on search result cards.
+8. [ ] Library management - remove from library + save-button states (Already in Library / Remove from Library).
+9. [ ] HTML entity decoding - render &#xb0;, &#xab;, < 0.001 etc. as proper symbols (degrees sign, guillemets, less-than).
+10. [ ] Publication dates on study cards - ensure visible on search + library cards.
+11. [ ] Empty state UI for the home search screen.
+12. [ ] Mobile overflow fix - horizontal scroll / black bar on narrow screens.
+13. [ ] Dark mode toggle.
+14. [ ] Google OAuth alongside GitHub.
+15. [ ] Evidence Graph explanation - tooltip/onboarding for what the graph does.
+16. [ ] End-to-end AI Agent test - automated manual flow (Search to Auto-read to Save to Note to Article to Graph).

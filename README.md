@@ -51,7 +51,7 @@ It is **not** a prettier PubMed, an AI fact-checker, or a social network. It is 
 3. **Apply the database schema** — open `sql/schema.sql` in the Supabase SQL Editor and run it once. It creates all tables, RLS policies, indexes, and the explicit table `GRANT`s. (`sql/schema.sql` is the single source of truth.)
    > **Gotcha (Task 12):** tables created purely by raw SQL get **no** default table grants on Supabase — RLS policies alone are not enough (Postgres enforces table privileges *before* RLS). The schema now includes the explicit `GRANT ... TO anon, authenticated` statements. If you already applied an older version of this schema to a live database, re-run just this block once:
    > ```sql
-   > GRANT SELECT, INSERT ON public.studies TO anon, authenticated;
+   > GRANT SELECT, INSERT, DELETE ON public.studies TO anon, authenticated;
    > GRANT SELECT, INSERT, UPDATE ON public.study_context TO anon, authenticated;
    > GRANT SELECT, INSERT, DELETE ON public.study_identified_limitations TO anon, authenticated;
    > GRANT SELECT, INSERT, UPDATE ON public.study_simplifications TO anon, authenticated;
@@ -86,7 +86,7 @@ These two PMIDs are the project's canonical test cases:
 - **35819335** — *"Triceps brachii hypertrophy is substantially greater after elbow extension training performed in the overhead versus neutral arm position"* (Maeo et al.) — the key "missing context" case (abstract-only).
 - **42605311** — a study with open-access full text on PMC (full-text extraction path).
 
-Flow to verify: search → open a study → **Save to Library** → **Generate** the Study breakdown, "In plain English", and Evidence context / "What this might mean for training" → sign in → add a personal note → create an article with a claim and link it to the study → run the alignment check → view the evidence graph at `/graph`.
+Flow to verify: search → open a study → the **Study breakdown**, "In plain English", and Evidence context / "What this might mean for training" **auto-generate instantly** (in memory only — nothing is saved yet) → click **Save to Library** to persist the study + AI notes → the button becomes **Remove from Library** (deletes the cached copy) → sign in → add a personal note → create an article with a claim and link it to the study → run the alignment check → view the evidence graph at `/graph`.
 
 ---
 
@@ -101,7 +101,7 @@ STUDY_ASSESSMENTS    = "how that context affects interpretation" (qualitative)
 ```
 
 - **Immutable source, regenerable AI:** the PubMed record is never overwritten. AI output lives in separate regenerable tables so a prompt/model change can regenerate interpretations without touching the source.
-- **RLS trust models:** `studies` = public read + insert only. AI-derived tables (`study_context`, `study_simplifications`, `study_assessments`) = public read + insert + update (regenerable). User-owned tables (`study_notes`, `articles`, `claims`, `evidence_links`) = private to `auth.uid()`.
+- **RLS trust models:** `studies` = public read + insert + delete (delete only removes the cached copy — "Remove from Library", never the PubMed source). AI-derived tables (`study_context`, `study_simplifications`, `study_assessments`) = public read + insert + update (regenerable). User-owned tables (`study_notes`, `articles`, `claims`, `evidence_links`) = private to `auth.uid()`.
 - **DeepSeek:** one cheap model (`deepseek-chat` default) powers all four AI jobs via the shared `getModel()` in `src/lib/ai.ts`; strict JSON validation on every call.
 
 ## Project notes

@@ -234,6 +234,14 @@ DROP POLICY IF EXISTS "Public insert studies" ON studies;
 CREATE POLICY "Public insert studies" ON studies
   FOR INSERT WITH CHECK (true);
 
+-- Task 14 (Phase 2): "Remove from Library" needs a public DELETE so the shared
+-- library is manageable. This only removes the cached copy (never the PubMed
+-- source); ON DELETE CASCADE clears the study's regenerable AI rows and any
+-- user-owned study_notes / evidence_links referencing it.
+DROP POLICY IF EXISTS "Public delete studies" ON studies;
+CREATE POLICY "Public delete studies" ON studies
+  FOR DELETE USING (true);
+
 -- === Protected user-owned tables (require authentication) ===
 ALTER TABLE study_assessments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
@@ -283,7 +291,7 @@ CREATE POLICY "Users can manage their own evidence links" ON evidence_links
 --   study_identified_limitations= SELECT + INSERT + DELETE (regenerated wholesale)
 --   study_simplifications       = SELECT + INSERT + UPDATE (regenerable)
 --   study_assessments           = SELECT + INSERT + UPDATE (regenerable)
-GRANT SELECT, INSERT ON public.studies TO anon, authenticated;
+GRANT SELECT, INSERT, DELETE ON public.studies TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE ON public.study_context TO anon, authenticated;
 GRANT SELECT, INSERT, DELETE ON public.study_identified_limitations TO anon, authenticated;
 GRANT SELECT, INSERT, UPDATE ON public.study_simplifications TO anon, authenticated;
