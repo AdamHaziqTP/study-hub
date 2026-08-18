@@ -325,7 +325,7 @@ Then, in order:
 - `/api/save-context`: ✅ implemented; persistence requires the updated `sql/schema.sql` to be applied in Supabase (user action noted in §10).
 - `/library` (Task 4): ✅ HTTP 200; home page `/` with Library nav link: HTTP 200.
 - Ranked search (Task 5): ✅ `sort=relevance` verified against NCBI ESearch (returns relevance-ordered PMIDs; result count unchanged — no filtering); `tsc --noEmit` clean.
-- Task 6 (auth + notes): ✅ `tsc --noEmit` clean (build must still pass — re-run `npm run build` after applying schema + enabling GitHub). The note save flow requires the `study_notes` RLS + table to exist in Supabase, so it is **not end-to-end verified until the user applies `sql/schema.sql`** and enables GitHub OAuth.
+- Task 6 (auth + notes): ✅ `tsc --noEmit` clean AND `npm run build` passes (Next.js 16 production build, Turbopack). The note save flow requires the `study_notes` RLS + table to exist in Supabase, so it is **not end-to-end verified until the user applies `sql/schema.sql`** and enables GitHub OAuth.
 - Git: clean on `main` (HEAD after Task 6 commit).
 
 ### 12.5 Environment notes
