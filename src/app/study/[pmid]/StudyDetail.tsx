@@ -302,11 +302,11 @@ export default function StudyDetail({
     <div className="min-h-screen bg-gray-50 text-gray-900">
       <div className="max-w-4xl mx-auto p-8">
         {/* Top bar */}
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <Link href="/" className="text-sm font-medium text-blue-600 hover:text-blue-800">
             ← Back to search
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             <span
               className={`text-xs font-semibold px-3 py-1 rounded-full ${
                 source === "saved"
@@ -334,7 +334,7 @@ export default function StudyDetail({
         </header>
 
         {/* Actions */}
-        <div className="flex gap-3 mb-10">
+        <div className="flex flex-wrap gap-3 mb-10">
           <button
             onClick={handleSave}
             disabled={saving || saveState === "saved"}

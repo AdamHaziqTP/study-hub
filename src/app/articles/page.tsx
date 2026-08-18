@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import AuthStatus from "@/components/AuthStatus";
 import Link from "next/link";
 import ArticlesList from "./ArticlesList";
@@ -10,13 +11,26 @@ import ArticlesList from "./ArticlesList";
  * session cookies) in <ArticlesList>. This shell only provides the page
  * header + AuthStatus like the other top-level pages.
  */
+export const metadata: Metadata = {
+  title: "My Articles",
+  description:
+    "Write and organize your own evidence-backed conclusions on Study Hub — claims linked to saved studies with supports, contradicts, mixed, or contextual relationships.",
+  openGraph: {
+    type: "website",
+    url: "/articles",
+    title: "My Articles | Study Hub",
+    description:
+      "Write and organize your own evidence-backed conclusions on Study Hub — claims linked to saved studies with supports, contradicts, mixed, or contextual relationships.",
+  },
+};
+
 export const dynamic = "force-dynamic";
 
 export default function ArticlesPage() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans">
       <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <h1 className="text-4xl font-bold text-gray-900">My Articles</h1>
           <div className="flex items-center gap-4">
             <AuthStatus />

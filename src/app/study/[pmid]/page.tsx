@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { supabase } from "@/lib/supabase";
 import { fetchPubMedStudyById, type PubMedStudy } from "@/lib/pubmed";
 import { notFound } from "next/navigation";
@@ -6,6 +7,42 @@ import type { StudyContext, StudySimplification, StudyAssessment } from "@/lib/a
 
 interface PageProps {
   params: Promise<{ pmid: string }>;
+}
+
+/**
+ * Dynamic per-study metadata (Task 12 polish): the study title becomes the
+ * page (and OG) title, with the authors/journal/PMID in the description.
+ * Uses the same DB-first -> live-PubMed fallback as the page body so the
+ * metadata is accurate whether or not the study is saved in the library.
+ */
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const { pmid } = await params;
+
+  const { data: saved } = await supabase
+    .from("studies")
+    .select("title, authors, journal")
+    .eq("pmid", pmid)
+    .maybeSingle();
+
+  const title = saved?.title ?? null;
+  let description = `Study Hub — read and critically interpret PMID ${pmid} in plain English.`;
+
+  if (title) {
+    const authorLine = saved?.authors ?? "Unknown authors";
+    const journalLine = saved?.journal ?? "Unknown journal";
+    description = `${title} — ${authorLine}, ${journalLine} (PMID ${pmid}). Raw abstract first, then AI-powered breakdown, evidence context, and training application on Study Hub.`;
+  }
+
+  return {
+    title: title ?? `Study PMID ${pmid}`,
+    description,
+    openGraph: {
+      type: "article",
+      url: `/study/${pmid}`,
+      title: title ?? `Study PMID ${pmid}`,
+      description,
+    },
+  };
 }
 
 /**

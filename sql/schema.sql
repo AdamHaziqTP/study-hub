@@ -253,6 +253,28 @@ CREATE POLICY "Users can manage their own evidence links" ON evidence_links
   WITH CHECK (auth.uid() = user_id);
 
 -- === Explicit grants =====================================================
+-- Table-level privileges are REQUIRED alongside the RLS policies: RLS is a
+-- per-row security boundary, but Postgres still enforces table privileges
+-- first. On Supabase, tables created via the dashboard/API get default
+-- grants to anon/authenticated, but tables created purely by raw SQL do not —
+-- Task 12 found the production database was missing them, which made every
+-- anon-key read of the AI-derived tables fail with "permission denied for
+-- table" (breaking /api/assess-claim, DB-first rendering on the study page,
+-- and all three save endpoints). These grants make the permissions explicit
+-- and keep the schema file the source of truth.
+--
+-- Shared PUBLIC library (must match the RLS policy shapes):
+--   studies                     = SELECT + INSERT (insert-only, immutable source)
+--   study_context               = SELECT + INSERT + UPDATE (regenerable)
+--   study_identified_limitations= SELECT + INSERT + DELETE (regenerated wholesale)
+--   study_simplifications       = SELECT + INSERT + UPDATE (regenerable)
+--   study_assessments           = SELECT + INSERT + UPDATE (regenerable)
+GRANT SELECT, INSERT ON public.studies TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.study_context TO anon, authenticated;
+GRANT SELECT, INSERT, DELETE ON public.study_identified_limitations TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.study_simplifications TO anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.study_assessments TO anon, authenticated;
+
 -- The user-owned tables are PRIVATE: anon/public gets NOTHING, authenticated
 -- gets the full lifecycle of their own rows (RLS enforces the ownership
 -- boundary). These statements make the permissions explicit — REVOKE from

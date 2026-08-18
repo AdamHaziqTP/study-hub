@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import AuthStatus from "@/components/AuthStatus";
 import { supabase } from "@/lib/supabase";
@@ -16,6 +17,19 @@ import { supabase } from "@/lib/supabase";
  * opt the route out of static prerendering explicitly — the `studies` table
  * changes every time someone saves a study and the list must stay fresh.
  */
+export const metadata: Metadata = {
+  title: "Library",
+  description:
+    "Your saved exercise-science studies — the shared public library of PubMed records you've bookmarked on Study Hub.",
+  openGraph: {
+    type: "website",
+    url: "/library",
+    title: "Library | Study Hub",
+    description:
+      "Your saved exercise-science studies — the shared public library of PubMed records you've bookmarked on Study Hub.",
+  },
+};
+
 export const dynamic = "force-dynamic";
 
 interface SavedStudy {
@@ -51,7 +65,7 @@ export default async function LibraryPage() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans">
       <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <h1 className="text-4xl font-bold text-gray-900">Library</h1>
           <div className="flex items-center gap-4">
             <AuthStatus />

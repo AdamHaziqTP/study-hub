@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import AuthStatus from "@/components/AuthStatus";
 import Link from "next/link";
 import EvidenceGraph from "./EvidenceGraph";
@@ -13,13 +14,26 @@ import EvidenceGraph from "./EvidenceGraph";
  * loads the graph client-side via the @supabase/ssr browser client (which
  * carries the user's session cookies).
  */
+export const metadata: Metadata = {
+  title: "Evidence Graph",
+  description:
+    "Visualize your evidence graph on Study Hub — articles, claims, and saved studies connected by relationship-colored edges, rendered live with d3-force physics.",
+  openGraph: {
+    type: "website",
+    url: "/graph",
+    title: "Evidence Graph | Study Hub",
+    description:
+      "Visualize your evidence graph on Study Hub — articles, claims, and saved studies connected by relationship-colored edges, rendered live with d3-force physics.",
+  },
+};
+
 export const dynamic = "force-dynamic";
 
 export default function GraphPage() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans">
       <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <h1 className="text-4xl font-bold text-gray-900">Evidence Graph</h1>
           <div className="flex items-center gap-4">
             <AuthStatus />
