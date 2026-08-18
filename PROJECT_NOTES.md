@@ -175,8 +175,8 @@ All of this is **committed and pushed** to GitHub (`main`).
 | `src/app/study/[pmid]/StudyDetail.tsx` | The study detail UI | Implements the product rules: raw abstract on top, then breakdown / evidence context / training-application placeholders, Save + PubMed buttons |
 | `src/app/page.tsx` | Search home page; cards link to `/study/[pmid]` | The entry point of the Explorer |
 | `sql/schema.sql` | Full schema + RLS policies as a checked-in file | Database is reproducible; portfolio artifact showing the data-model reasoning |
-| `src/lib/ai.ts` | Server-only DeepSeek helper: **Job-1 extraction** (title+abstract → validated `StudyContext`) | Uses the cheap model by default (`deepseek-chat`); reads `DEEPSEEK_API_KEY`/`DEEPSEEK_MODEL` server-side; validates JSON before it can reach DB/UI |
-| `src/app/api/extract-context/route.ts` | Test endpoint: `POST {pmid}` (fetches from PubMed + extracts) or `{title, abstract}` (extracts directly) | Lets us test the AI pipeline on a real study without any DB write |
+| `src/lib/ai.ts` | Server-only DeepSeek helper: **Job-1 extraction** (title + abstract + optional full text → validated `StudyContext`, with two-tier limitations) | Uses the cheap model by default (`deepseek-chat`); reads `DEEPSEEK_API_KEY`/`DEEPSEEK_MODEL` server-side; validates JSON before it can reach DB/UI; `identified_limitations` are derived interpretations each grounded in a `based_on` quoted fact |
+| `src/app/api/extract-context/route.ts` | Test endpoint: `POST {pmid}` (fetches from PubMed + PMC full text when available, then extracts) or `{title, abstract}` (abstract-only) | Lets us test the AI pipeline on a real study without any DB write; returns `sourceInfo` (`full_text` / `abstract_only` / `provided_text`) |
 | `.env.example` | Committed template of required env vars (no secrets) | New devs/reviewers see exactly what's needed; `.env*` stays git-ignored except this file |
 
 ### The page layout that encodes the product rules (`StudyDetail.tsx`, top to bottom)
@@ -199,6 +199,8 @@ All of this is **committed and pushed** to GitHub (`main`).
 - ✅ Study detail page (saved copy first, live fallback)
 - ✅ Save to Library (verified working — RLS SELECT+INSERT policies applied)
 - ✅ AI extraction pipeline (Job 1) — DeepSeek, `deepseek-chat` by default, validated output, test endpoint `/api/extract-context`
+- ✅ Full-text (PMC) reading — `pmcid` is read from the PubMed record itself (lag-free), full text is fetched for open-access papers and fed to the AI; `sourceInfo` reports which source was used
+- ✅ Two-tier limitations — `limitations` = what the paper states; `identified_limitations` = derived interpretations, each with a `based_on` quote from the stated design (e.g. MRI swelling risk, unknown training status)
 - ✅ `tsc --noEmit` passes clean
 - ✅ Living doc (this file)
 
@@ -223,7 +225,7 @@ We are working through a 24-phase roadmap (from the project brief). Position ≈
 
 ### Immediate next steps (one small, testable step at a time)
 
-1. ✅ **AI extraction skeleton** — `src/lib/ai.ts` + `/api/extract-context` (uses `deepseek-chat`; validates JSON). **To test:** add `DEEPSEEK_API_KEY` (and optionally `DEEPSEEK_MODEL`) to `.env.local`, restart the dev server, then `POST /api/extract-context` with `{"pmid":"35819335"}`.
+1. ✅ **AI extraction skeleton** — `src/lib/ai.ts` + `/api/extract-context` (uses `deepseek-chat`; validates JSON). Verified: abstracts only → `abstract_only`; PMC open-access → `full_text` with derived limitations (test: PMID 42605311 returned `sourceInfo: full_text`).
 2. **Populate the Study breakdown** on the detail page from the validated `StudyContext` fields (display only, no DB write yet).
 3. **Persist extracted context** — store into the regenerable `study_context` table via a "Generate context" action on the study page.
 4. **Library page** (`/library`) — list saved studies (Evidence Notebook starting point).

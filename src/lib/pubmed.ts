@@ -19,6 +19,8 @@ export interface PubMedStudy {
   publicationDate: string | null;
   abstract: string;
   doi?: string;
+  /** PubMed Central ID (e.g. "PMC13477667") when the article is in PMC. */
+  pmcid?: string | null;
 }
 
 const NCBI_BASE = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils";
@@ -85,6 +87,81 @@ export async function fetchPubMedStudyById(pmid: string): Promise<PubMedStudy | 
   const xmlText = await fetchRes.text();
   const studies = parsePubmedXml(xmlText);
   return studies[0] ?? null;
+}
+
+/**
+ * Find the PubMed Central (PMC) ID for a PMID.
+ *
+ * Reads the PMC ArticleId directly from the PubMed record itself — this is
+ * authoritative and lag-free (elink's pubmed_pmc index can lag for newly
+ * published articles). Returns null when the article is not in PMC.
+ */
+export async function findPmcid(pmid: string): Promise<string | null> {
+  const study = await fetchPubMedStudyById(pmid);
+  return study?.pmcid ?? null;
+}
+
+/**
+ * Fetch full text from PubMed Central when available (open-access articles).
+ * Returns the PMC ID (or null) and a capped plain-text excerpt of the body.
+ * The cap controls AI-input cost.
+ */
+export async function fetchFullText(pmid: string): Promise<{
+  pmcid: string | null;
+  text: string | null;
+}> {
+  const pmcid = await findPmcid(pmid);
+  if (!pmcid) return { pmcid: null, text: null };
+
+  const fetchRes = await fetch(
+    `${NCBI_BASE}/efetch.fcgi?${buildParams({
+      db: "pmc",
+      id: pmcid,
+      retmode: "xml",
+    })}`
+  );
+  if (!fetchRes.ok) return { pmcid, text: null };
+
+  const xmlText = await fetchRes.text();
+  return { pmcid, text: parsePmcFullText(xmlText) };
+}
+
+const FULL_TEXT_CHAR_LIMIT = 12000;
+
+/** Parse PMC full-text XML into a capped, whitespace-cleaned plain-text excerpt. */
+function parsePmcFullText(xmlText: string): string | null {
+  const parser = new XMLParser({
+    ignoreAttributes: false,
+    textNodeName: "_text",
+  });
+
+  const parsed = parser.parse(xmlText);
+  const body = parsed?.["pmc-articleset"]?.article?.body;
+  if (!body) return null;
+
+  const collected = collectText(body).replace(/\s+/g, " ").trim();
+  if (!collected) return null;
+  return collected.length > FULL_TEXT_CHAR_LIMIT
+    ? collected.slice(0, FULL_TEXT_CHAR_LIMIT)
+    : collected;
+}
+
+/** Recursively collect all text nodes from a parsed XML object tree. */
+function collectText(node: unknown): string {
+  if (node == null) return "";
+  if (typeof node === "string") return node + " ";
+  if (Array.isArray(node)) return node.map(collectText).join("");
+  if (typeof node === "object") {
+    const obj = node as Record<string, unknown>;
+    if (typeof obj._text === "string") return obj._text + " ";
+    let out = "";
+    for (const key of Object.keys(obj)) {
+      if (key.startsWith("@_")) continue; // skip attributes
+      out += collectText(obj[key]);
+    }
+    return out;
+  }
+  return "";
 }
 
 /** Extract a string from a node that may be a plain string, `_text`, or array. */
@@ -174,16 +251,20 @@ export function parsePubmedXml(xmlText: string): PubMedStudy[] {
       }
     }
 
-    // DOI from ELocationID list (may be string or array of objects).
+    // DOI + PMC ID from the ArticleIdList (may be string or array of objects).
     let doi: string | undefined;
+    let pmcid: string | null | undefined;
     const idList =
       article.PubmedData?.ArticleIdList?.ArticleId ?? [];
     const ids = Array.isArray(idList) ? idList : [idList];
     for (const idNode of ids) {
-      if (idNode?.["@_IdType"] === "doi") {
+      if (idNode?.["@_IdType"] === "doi" && !doi) {
         doi = toText(idNode);
-        break;
       }
+      if (idNode?.["@_IdType"] === "pmc" && pmcid === undefined) {
+        pmcid = toText(idNode) || null;
+      }
+      if (doi && pmcid !== undefined) break;
     }
 
     return {
@@ -194,6 +275,7 @@ export function parsePubmedXml(xmlText: string): PubMedStudy[] {
       abstract,
       publicationDate,
       doi,
+      pmcid,
     };
   });
 }
