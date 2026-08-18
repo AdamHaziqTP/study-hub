@@ -39,12 +39,16 @@ export async function searchPubMed(
   retmax = 10
 ): Promise<PubMedStudy[]> {
   // ---- Step 1: ESearch -> PMIDs ----
+  // sort=relevance uses NCBI's "Best Match" algorithm (the same one used on
+  // pubmed.ncbi.nlm.nih.gov) — it ranks results by relevance without ever
+  // hiding lower-ranked ones ("Rank, don't filter").
   const searchRes = await fetch(
     `${NCBI_BASE}/esearch.fcgi?${buildParams({
       db: "pubmed",
       term,
       retmode: "json",
       retmax: String(retmax),
+      sort: "relevance",
     })}`
   );
   if (!searchRes.ok) {

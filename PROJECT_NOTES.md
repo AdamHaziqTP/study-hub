@@ -167,7 +167,7 @@ All of this is **committed and pushed** to GitHub (`main`).
 
 | File | What it does | Why it exists |
 |---|---|---|
-| `src/lib/pubmed.ts` | Shared PubMed engine: `esearch` → `efetch` → XML parse → structured `PubMedStudy` (`pmid`, `title`, `authors`, `journal`, `publicationDate`, `abstract`, `doi`, `pmcid`) + `fetchFullText` (PMC, 12k cap) | One source of truth for parsing; `findPmcid` reads the PMC ArticleId from the record itself (lag-free) |
+| `src/lib/pubmed.ts` | Shared PubMed engine: `esearch` → `efetch` → XML parse → structured `PubMedStudy` (`pmid`, `title`, `authors`, `journal`, `publicationDate`, `abstract`, `doi`, `pmcid`) + `fetchFullText` (PMC, 12k cap); `searchPubMed` uses `sort=relevance` (NCBI Best Match) | One source of truth for parsing; `findPmcid` reads the PMC ArticleId from the record itself (lag-free); Best Match ranks results by relevance without hiding any (Task 5) |
 | `src/app/api/search-pubmed/route.ts` | API route exposing search (delegates to shared lib) | Backend keeps the NCBI call server-side |
 | `src/app/api/save-study/route.ts` | POST: check-then-insert a study into `studies` | INSERT-only per security review (§7); no public UPDATE |
 | `src/app/api/extract-context/route.ts` | POST: fetch PubMed + PMC full text when available, run DeepSeek extraction, return `{ study, context, sourceInfo }` | The AI pipeline (no DB write) |
@@ -206,6 +206,7 @@ All of this is **committed and pushed** to GitHub (`main`).
 - ✅ **Context persisted (Task 3)** — `/api/save-context` upserts into `study_context` (+ `study_identified_limitations` child rows); `page.tsx` loads saved context DB-first; schema updated with `source_info` + child table + regenerable RLS (SELECT+INSERT+UPDATE on study_context; SELECT+INSERT+DELETE on child)
 - ⏳ **Action required by user:** run the updated `sql/schema.sql` in Supabase (adds `source_info` column, `study_identified_limitations` table + index, and the regenerable RLS policies) so "Generate context" persistence works
 - ✅ **Library page (Task 4)** — `/library` lists saved studies from `studies` newest-first (server component, `export const dynamic = "force-dynamic"` so newly-saved studies always appear); reuses home-page card markup, links to `/study/[pmid]`, has empty + error states; Library nav link added to the home page header
+- ✅ **Ranked search (Task 5)** — `searchPubMed` now sends `sort=relevance` to ESearch, delegating ranking to NCBI's own "Best Match" ML algorithm (the same one used on pubmed.ncbi.nlm.nih.gov). This ranks results by relevance without filtering any — result count is unchanged (verified: "internal external rotation bicep" → still 228 hits). Default ESearch order is newest-first by PMID; Best Match surfaces the most-relevant studies regardless of recency.
 - ✅ `tsc --noEmit` passes clean
 - ✅ Living doc (this file)
 
@@ -220,12 +221,12 @@ Why it's a good test case: it's exactly the kind of study that lacks context in 
 
 ## 11. Roadmap position & next steps
 
-We are working through a 24-phase roadmap (from the project brief). Position ≈ **Phase 10 (library view of saved studies)**. Priority hierarchy:
+We are working through a 24-phase roadmap (from the project brief). Position ≈ **Phase 11 (ranked search)**. Priority hierarchy:
 
 - 🔴 **Must work:** PubMed → Study → Study Context → Evidence Context ✅ (core flow wired; extraction rendered + persisted)
 - 🟠 **Very important:** Notes → Articles → Claims → Evidence Links
 - 🟡 **High-value stretch:** AI simplification → Claim alignment
-- 🟢 **Stretch:** evidence graph → ranked search → polish
+- 🟢 **Stretch:** evidence graph → polish
 - ⚪ **Completely optional:** social / monetisation / mobile
 
 ### Immediate next steps (one small, testable step at a time)
@@ -234,8 +235,8 @@ We are working through a 24-phase roadmap (from the project brief). Position ≈
 2. ✅ **Populate the Study breakdown** on the detail page from validated `StudyContext` (display only; `sourceInfo` badge; loading/error states).
 3. ✅ **Persist extracted context** — `/api/save-context` upserts `study_context` + child limitations; page.tsx loads DB-first. **User action:** apply updated `sql/schema.sql` in Supabase for `source_info` + child table + regenerable RLS.
 4. ✅ **Library page** (`/library`) — server component lists saved studies from `studies` newest-first (`export const dynamic = "force-dynamic"`); home-page card markup reused; empty + error states; nav link on home page.
-5. **Ranked search** — relevance ordering that never hides lower-ranked results.
-6. **Notes on studies** (per-study personal notes).
+5. ✅ **Ranked search** — `sort=relevance` (NCBI Best Match) added to ESearch in `searchPubMed`; verified against "internal external rotation bicep" (still 228 results, relevance-ordered; no filtering).
+6. **Notes on studies** — per-study personal notes (user-owned, needs auth).
 7. **Article/claim system** — consumes studies discovered through the Explorer.
 
 ### Workflow rule going forward
@@ -268,15 +269,14 @@ This project is developed in short agent-chat sessions. A fresh agent should be 
 ### 12.2 Current task queue
 Current task:
 
-**Task 5 (do this next): Ranked search — relevance ordering that never hides results.**
-- Reference: `src/app/page.tsx` (the search UI — results are currently raw PubMed order), `src/lib/pubmed.ts` (`searchPubMed` returns `idlist` order from NCBI ESearch).
-- Product rule (§3): "Rank, don't filter" — results are *ordered* by relevance, never hidden. A "peripheral" study must remain visible below more-relevant ones.
-- Open design question to resolve first (explain plan before coding): how to rank without a paid/quality signal. Candidate approaches: (a) term-frequency overlap between query tokens and title/abstract; (b) NCBI's `relevance` sort option in ESearch (`sort=relevance`); (c) a hybrid. Keep it simple and defensible for an IS interview.
-- Deliverable: search on the home page returns relevance-ordered results with the ordering rationale documented; low-relevance studies still appear.
-- Reference for ranked-search research: none external needed — the raw `esearchresult` object in `src/lib/pubmed.ts` already exposes options; verify NCBI `sort=relevance` support in the E-utils `esearch` docs.
+**Task 6 (do this next): Notes on studies — per-study personal notes (user-owned, needs auth).**
+- What: allow a user to attach personal notes to a saved study (e.g., "this changes how I'd program triceps").
+- Product fit: this is the first piece of the Evidence Notebook beyond just saving studies (§3 hierarchy, tier 2).
+- Open design question to resolve first: notes live per-`study`? per-user+study? (likely a `study_notes` table keyed on `(user_id, study_id)`). Also: which Supabase auth strategy (email magic link? test user?) given the app currently has zero auth UI.
+- Deliverable: a user can write/read/edit a note on a study page; note is private to that user.
+- Notes: all user-owned tables (`articles`, `claims`, `evidence_links`, `study_assessments`, `users`) are RLS-locked with **no public policies** — this task must introduce auth before RLS can be enforced.
 
 Then, in order:
-6. **Notes on studies** — per-study personal notes (user-owned, needs auth).
 7. **Article/claim system** — consumes studies from the Explorer (Phase 13-15).
 8. Optional/stretch: evidence graph, AI simplification, claim alignment, polish, deploy, test, docs.
 
@@ -301,8 +301,8 @@ Then, in order:
 - `/api/extract-context`: ✅ 35819335 → `abstract_only` + derived limitations; 42605311 → `full_text`.
 - `/api/save-context`: ✅ implemented; persistence requires the updated `sql/schema.sql` to be applied in Supabase (user action noted in §10).
 - `/library` (Task 4): ✅ HTTP 200; home page `/` with Library nav link: HTTP 200.
-- `tsc --noEmit`: ✅ clean.
-- Git: clean on `main` (HEAD after Task 4 commit).
+- Ranked search (Task 5): ✅ `sort=relevance` verified against NCBI ESearch (returns relevance-ordered PMIDs; result count unchanged — no filtering); `tsc --noEmit` clean.
+- Git: clean on `main` (HEAD after Task 5 commit).
 
 ### 12.5 Environment notes
 - `.env.local` already contains `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `DEEPSEEK_API_KEY` (user set it). `DEEPSEEK_MODEL` optional.
