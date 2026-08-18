@@ -30,6 +30,7 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
   const [note, setNote] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   // Tracks the studyId this component last loaded a note for, so we can reset
   // the note when the user saves the study for the first time (studyId flips
@@ -110,39 +111,65 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
     }
   }, []);
 
+  /** Format a Supabase PostgrestError into a human-readable message. */
+  const describeError = (err: unknown): string => {
+    if (err && typeof err === "object") {
+      const e = err as { message?: string; code?: string; hint?: string; details?: string };
+      const parts: string[] = [];
+      if (e.message) parts.push(e.message);
+      if (e.code) parts.push(`(code ${e.code})`);
+      if (e.hint) parts.push(`hint: ${e.hint}`);
+      if (parts.length > 0) return parts.join(" ");
+    }
+    return err instanceof Error ? err.message : "Unknown error";
+  };
+
   const handleSave = async () => {
     if (!userId || !studyId) return;
     setSaveState("saving");
+    setSaveError(null);
     try {
       const supabase = createClient();
 
       // Is there an existing note row? (RLS: only the user's own row is visible.)
-      const { data: existing } = await supabase
+      const selectRes = await supabase
         .from("study_notes")
         .select("id")
         .eq("study_id", studyId)
         .maybeSingle();
 
-      if (existing) {
+      if (selectRes.error) {
+        console.error("Load note failed:", selectRes.error);
+        throw new Error(describeError(selectRes.error));
+      }
+
+      if (selectRes.data) {
         // UPDATE - keep the user's own row; user_id is never touched.
         const { error } = await supabase
           .from("study_notes")
           .update({ note_text: note, updated_at: new Date().toISOString() })
-          .eq("id", existing.id);
-        if (error) throw error;
+          .eq("id", selectRes.data.id);
+        if (error) {
+          console.error("Update note failed:", error);
+          throw new Error(describeError(error));
+        }
       } else {
         // INSERT - user_id DEFAULTS to auth.uid() in the DB. The client
         // never sends user_id, so a row can't be written for someone else.
         const { error } = await supabase
           .from("study_notes")
           .insert({ study_id: studyId, note_text: note });
-        if (error) throw error;
+        if (error) {
+          console.error("Insert note failed:", error);
+          throw new Error(describeError(error));
+        }
       }
 
       setSaveState("saved");
       setTimeout(() => setSaveState("idle"), 2500);
     } catch (err) {
       console.error("Save note failed:", err);
+      setSaveError(err instanceof Error ? err.message : String(err));
       setSaveState("error");
     }
   };
@@ -225,10 +252,16 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
         )}
         {saveState === "error" && (
           <span className="text-sm text-red-600 font-medium">
-            Failed to save. Please try again.
+            Failed to save: please try again.
           </span>
         )}
       </div>
+
+      {saveState === "error" && saveError && (
+        <div className="mt-3 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
+          {saveError}
+        </div>
+      )}
     </div>
   );
 }
