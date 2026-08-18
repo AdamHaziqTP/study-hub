@@ -9,6 +9,7 @@
 --   studies           = immutable raw PubMed record (source of truth)
 --   study_context     = AI-extracted structured facts (regenerable)
 --   study_assessments = qualitative evidence context
+--   study_notes       = user-owned personal notes (private, RLS-locked)
 --   articles/claims/evidence_links = the user's evidence graph
 -- ============================================================
 
@@ -67,6 +68,27 @@ CREATE TABLE IF NOT EXISTS study_identified_limitations (
 
 CREATE INDEX IF NOT EXISTS idx_study_identified_limitations_study_id
   ON study_identified_limitations (study_id);
+
+-- 3c. Study Notes (user-owned personal notes — PRIVATE, RLS-locked)
+--     One consolidated note per (user, study). The user_id column defaults to
+--     auth.uid() so the database fills it from the caller's JWT — the client
+--     NEVER sends user_id, making it impossible to write a row on behalf of
+--     someone else even before the WITH CHECK policy is evaluated.
+CREATE TABLE IF NOT EXISTS study_notes (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  study_id UUID REFERENCES studies(id) ON DELETE CASCADE NOT NULL,
+  note_text TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  -- One consolidated note per user, per study
+  UNIQUE (user_id, study_id)
+);
+
+-- Postgres does not auto-index foreign key columns; index both FKs used by the
+-- UNIQUE(user_id, study_id) lookup and the per-study / per-user queries.
+CREATE INDEX IF NOT EXISTS idx_study_notes_user_id ON study_notes (user_id);
+CREATE INDEX IF NOT EXISTS idx_study_notes_study_id ON study_notes (study_id);
 
 -- 4. Study Assessments (qualitative evidence profile)
 CREATE TABLE IF NOT EXISTS study_assessments (
@@ -168,6 +190,23 @@ CREATE POLICY "Public insert study identified limitations" ON study_identified_l
 DROP POLICY IF EXISTS "Public delete study identified limitations" ON study_identified_limitations;
 CREATE POLICY "Public delete study identified limitations" ON study_identified_limitations
   FOR DELETE USING (true);
+
+-- === study_notes = PRIVATE user-owned notes ============================
+-- The ONLY table so far that locks rows strictly to the authenticated user
+-- who owns them. No public (anon) access at all:
+--   - auth.uid() = user_id  → a user can only see/edit THEIR OWN notes.
+--   - WITH CHECK (auth.uid() = user_id)  → a user cannot insert a row on
+--     behalf of someone else, nor re-assign an existing row to another user.
+--   - FOR ALL (SELECT/INSERT/UPDATE/DELETE) → full lifecycle of the user's
+--     own note under one tight policy.
+ALTER TABLE study_notes ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can manage their own notes" ON study_notes;
+CREATE POLICY "Users can manage their own notes" ON study_notes
+  FOR ALL
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
 
 DROP POLICY IF EXISTS "Public read study assessments" ON study_assessments;
 CREATE POLICY "Public read study assessments" ON study_assessments

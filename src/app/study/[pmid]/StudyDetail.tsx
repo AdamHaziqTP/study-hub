@@ -2,12 +2,17 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import AuthStatus from "@/components/AuthStatus";
 import type { PubMedStudy } from "@/lib/pubmed";
 import type { StudyContext } from "@/lib/ai";
+import PersonalNotes from "./PersonalNotes";
 
 interface StudyDetailProps {
   study: PubMedStudy;
   source: "saved" | "live";
+  /** UUID of the `studies` row from the DB (null when the study isn't saved). */
+  studyId?: string | null;
   /** Previously-generated context loaded from the DB (null when none exists). */
   savedContext?: StudyContext | null;
   savedSourceInfo?: string | null;
@@ -16,23 +21,27 @@ interface StudyDetailProps {
 type ContextState = "idle" | "loading" | "done" | "error";
 
 /**
- * StudyDetail — the core Explorer page.
+ * StudyDetail - the core Explorer page.
  *
  * Product principle (per the project spec):
- *   1. The raw source (abstract/full text) is always shown first — the AI is
+ *   1. The raw source (abstract/full text) is always shown first - the AI is
  *      an interpreter, never the source.
  *   2. Source facts, AI interpretation, and practical implications stay
  *      visually and structurally distinct.
  *   3. The AI-extracted breakdown is generated on demand, persisted to the
  *      regenerable `study_context` table, and re-loaded from the DB on
  *      revisit (DB-first; no AI call needed if it exists).
+ *   4. Personal notes (Task 6) are user-owned and RLS-locked to the signed-in
+ *      user; they need the study to be saved in the library first.
  */
 export default function StudyDetail({
   study,
   source,
+  studyId = null,
   savedContext = null,
   savedSourceInfo = null,
 }: StudyDetailProps) {
+  const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saved" | "error">("idle");
 
@@ -59,6 +68,9 @@ export default function StudyDetail({
       });
       if (!res.ok) throw new Error("save failed");
       setSaveState("saved");
+      // Re-render the server component so the new `studyId` propagates down
+      // and PersonalNotes unlocks for the signed-in user without a reload.
+      router.refresh();
     } catch {
       setSaveState("error");
     } finally {
@@ -131,18 +143,21 @@ export default function StudyDetail({
           <Link href="/" className="text-sm font-medium text-blue-600 hover:text-blue-800">
             ← Back to search
           </Link>
-          <span
-            className={`text-xs font-semibold px-3 py-1 rounded-full ${
-              source === "saved"
-                ? "bg-green-100 text-green-800"
-                : "bg-blue-100 text-blue-800"
-            }`}
-          >
-            {source === "saved" ? "Saved in library" : "Fetched live from PubMed"}
-          </span>
+          <div className="flex items-center gap-3">
+            <span
+              className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                source === "saved"
+                  ? "bg-green-100 text-green-800"
+                  : "bg-blue-100 text-blue-800"
+              }`}
+            >
+              {source === "saved" ? "Saved in library" : "Fetched live from PubMed"}
+            </span>
+            <AuthStatus />
+          </div>
         </div>
 
-        {/* Header — the raw study facts */}
+        {/* Header - the raw study facts */}
         <header className="mb-10">
           <h1 className="text-3xl font-bold leading-tight mb-3">{study.title}</h1>
           <div className="text-sm text-gray-600 space-y-1">
@@ -202,9 +217,9 @@ export default function StudyDetail({
                 className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors text-sm"
               >
                 {contextState === "loading"
-                  ? "Extracting…"
+                  ? "Extracting..."
                   : savingContext
-                    ? "Saving context…"
+                    ? "Saving context..."
                     : savedContext
                       ? "Regenerate context"
                       : "Generate context"}
@@ -239,7 +254,7 @@ export default function StudyDetail({
                 </div>
               ))}
               <p className="text-sm text-gray-500 text-center pt-1">
-                Reading the study and extracting structured information…
+                Reading the study and extracting structured information...
               </p>
             </div>
           )}
@@ -300,7 +315,7 @@ export default function StudyDetail({
                       >
                         <p className="text-sm text-gray-800">{item.limitation}</p>
                         <p className="text-xs text-amber-700 mt-1.5">
-                          <span className="font-semibold">Based on:</span> “{item.based_on}”
+                          <span className="font-semibold">Based on:</span> "{item.based_on}"
                         </p>
                       </div>
                     ))}
@@ -338,26 +353,34 @@ export default function StudyDetail({
           <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white">
             <p className="text-sm text-gray-500">
               This section will surface the factors that affect how broadly this
-              study can be interpreted — sample size, study design, population,
-              training status, duration, and measurement — with plain-language
+              study can be interpreted - sample size, study design, population,
+              training status, duration, and measurement - with plain-language
               explanations of <em>why each factor matters</em>. No numerical
-              &ldquo;credibility score&rdquo;; you'll get the context to judge for yourself.
+              "credibility score"; you'll get the context to judge for yourself.
             </p>
           </div>
         </section>
 
         {/* ============ APPLICATION ============ */}
-        <section>
+        <section className="mb-10">
           <h2 className="text-lg font-bold mb-4 pb-2 border-b border-gray-200">
             What this might mean for training
           </h2>
           <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white">
             <p className="text-sm text-gray-500">
               This section will translate the findings into practical training
-              considerations — clearly labelled as <em>interpretation</em>, with
+              considerations - clearly labelled as <em>interpretation</em>, with
               explicit cautions about what this study does <em>not</em> establish.
             </p>
           </div>
+        </section>
+
+        {/* ============ PERSONAL NOTES (Task 6) ============ */}
+        <section>
+          <h2 className="text-lg font-bold mb-4 pb-2 border-b border-gray-200">
+            Personal notes
+          </h2>
+          <PersonalNotes studyId={studyId} pmid={study.pmid} />
         </section>
       </div>
     </div>

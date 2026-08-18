@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AuthStatus from "@/components/AuthStatus";
 import { supabase } from "@/lib/supabase";
 
 /**
@@ -52,12 +53,15 @@ export default async function LibraryPage() {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-4xl font-bold text-gray-900">Library</h1>
-          <Link
-            href="/"
-            className="text-sm font-medium text-blue-600 hover:text-blue-800"
-          >
-            ← Back to search
-          </Link>
+          <div className="flex items-center gap-4">
+            <AuthStatus />
+            <Link
+              href="/"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+            >
+              ← Back to search
+            </Link>
+          </div>
         </div>
 
         {error ? (

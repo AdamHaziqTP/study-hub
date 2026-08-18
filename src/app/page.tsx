@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import AuthStatus from "@/components/AuthStatus";
 
 interface Study {
   pmid: string;
@@ -39,12 +40,15 @@ export default function Home() {
       <div className="max-w-5xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <h1 className="text-4xl font-bold text-gray-900">Evidence Hub</h1>
-          <Link
-            href="/library"
-            className="text-sm font-medium text-blue-600 hover:text-blue-800"
-          >
-            Library →
-          </Link>
+          <div className="flex items-center gap-4">
+            <AuthStatus />
+            <Link
+              href="/library"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+            >
+              Library →
+            </Link>
+          </div>
         </div>
 
         {/* Search Bar */}

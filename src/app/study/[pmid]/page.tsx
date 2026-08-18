@@ -9,16 +9,22 @@ interface PageProps {
 }
 
 /**
- * Study detail page — the CORE of the Explorer journey.
+ * Study detail page - the CORE of the Explorer journey.
  *
  * Flow:
  *   1. Try the saved copy in Supabase first (works even if NCBI is down),
  *      and load any previously-generated `study_context` + identified
- *      limitations from the DB — no AI call needed on revisit.
+ *      limitations from the DB - no AI call needed on revisit.
  *   2. Fall back to a live PubMed fetch (no saved context to show yet).
+ *
+ * The page is force-dynamic: whether a study is saved (and thus whether
+ * PersonalNotes receives a studyId) changes as users save studies to the
+ * shared library.
  *
  * Next.js 16: `params` is a Promise and must be awaited.
  */
+export const dynamic = "force-dynamic";
+
 export default async function StudyPage({ params }: PageProps) {
   const { pmid } = await params;
 
@@ -79,6 +85,7 @@ export default async function StudyPage({ params }: PageProps) {
       <StudyDetail
         study={study}
         source="saved"
+        studyId={saved.id}
         savedContext={savedContext}
         savedSourceInfo={savedSourceInfo}
       />
