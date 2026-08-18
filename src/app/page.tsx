@@ -48,6 +48,12 @@ export default function Home() {
             >
               Library →
             </Link>
+            <Link
+              href="/articles"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+            >
+              My Articles →
+            </Link>
           </div>
         </div>
 

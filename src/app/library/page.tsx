@@ -56,6 +56,12 @@ export default async function LibraryPage() {
           <div className="flex items-center gap-4">
             <AuthStatus />
             <Link
+              href="/articles"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+            >
+              My Articles →
+            </Link>
+            <Link
               href="/"
               className="text-sm font-medium text-blue-600 hover:text-blue-800"
             >

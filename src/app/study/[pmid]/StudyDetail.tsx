@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthStatus from "@/components/AuthStatus";
+import StudyReferences from "@/components/StudyReferences";
 import type { PubMedStudy } from "@/lib/pubmed";
 import type { StudyContext } from "@/lib/ai";
 import PersonalNotes from "./PersonalNotes";
@@ -373,6 +374,23 @@ export default function StudyDetail({
               explicit cautions about what this study does <em>not</em> establish.
             </p>
           </div>
+        </section>
+
+        {/* ============ REFERENCES IN ARTICLES (Task 7) ============ */}
+        <section className="mb-10">
+          <h2 className="text-lg font-bold mb-4 pb-2 border-b border-gray-200">
+            References in your articles
+          </h2>
+          {studyId ? (
+            <StudyReferences studyId={studyId} />
+          ) : (
+            <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white">
+              <p className="text-sm text-gray-500">
+                Save this study to the library first — articles can only link
+                claims to studies that are saved.
+              </p>
+            </div>
+          )}
         </section>
 
         {/* ============ PERSONAL NOTES (Task 6) ============ */}

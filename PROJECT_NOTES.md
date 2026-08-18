@@ -149,7 +149,8 @@ Supabase's RLS is a per-table bouncer. Our decisions:
 - **`study_context` = shared regenerable derived library** (DIFFERENT trust model than `studies`): AI-derived output is *designed* to be overwritten — a prompt/model change can regenerate it. So RLS is **SELECT + INSERT + UPDATE** (upsert on `study_id`), with DELETE locked (a full-row upsert replaces content wholesale).
 - **`study_identified_limitations` = regenerable child**: regeneration = delete-all + reinsert, so RLS is **SELECT + INSERT + DELETE** (no UPDATE — rows are replaced wholesale).
 - **`study_notes` = PRIVATE user-owned notes** (Task 6, the first user-owned table): a single `FOR ALL TO authenticated` policy with `USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)` — a user can only see/edit their OWN rows, and cannot insert on another user's behalf. The `user_id` column **DEFAULTS to `auth.uid()`** in the DB, so the client never sends it (belt-and-suspenders on top of the WITH CHECK).
-- **User-owned tables** (`articles`, `claims`, `evidence_links`, `study_assessments`, `users`) have RLS enabled with **no public policies** — locked until their feature is built (articles/claims next).
+- **`articles`/`claims`/`evidence_links` = PRIVATE user-owned evidence graph** (Task 7): a single `FOR ALL TO authenticated` policy per table with `USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id)` — same trust model as `study_notes`; `user_id` **DEFAULTS to `auth.uid()`** so the client never sends it. Explicit `GRANT ALL TO authenticated` + `REVOKE ALL FROM anon` make the permissions visible. `evidence_links` gets a surrogate `id` PK + `UNIQUE (claim_id, study_id)` so the editor can update/delete one link by id. `study_assessments`, `users` remain RLS-enabled with **no policies** — locked until their features are built.
+- **RLS indexes (performance):** every `user_id` / FK column used by the policies and the per-study lookups is indexed (`idx_articles_user_id`, `idx_claims_article_id`, `idx_claims_user_id`, `idx_evidence_links_claim_id`, `idx_evidence_links_study_id`, `idx_evidence_links_user_id`) per Supabase RLS performance guidance.
 - **Keys:** only the Supabase **anon/public** key is exposed via `NEXT_PUBLIC_` (it's meant to be public — RLS is the real security boundary). The DeepSeek key goes into `.env.local` **without** `NEXT_PUBLIC_` so it stays server-side. `.env*` is git-ignored (except `.env.example`, the committed template).
 
 ---
@@ -193,7 +194,13 @@ All of this is **committed and pushed** to GitHub (`main`).
 | `src/lib/supabase/server.ts` | Server Supabase client (`createServerClient`) bound to request/response cookies | Used by `/auth/callback` for the code exchange |
 | `src/app/page.tsx` | Search home page; cards link to `/study/[pmid]`; header now has `AuthStatus` + Library link | The entry point of the Explorer |
 | `src/app/library/page.tsx` | Library page (`/library`): server component listing saved studies from `studies` newest-first with the home-page card markup, empty + error states, and a "Back to search" link; header has `AuthStatus` | Task 4; public shared-library view (`studies` = shared reference library) |
-| `sql/schema.sql` | Full schema + RLS as a checked-in file (incl. `source_info` col + `study_identified_limitations` table + regenerable RLS + **`study_notes` table + per-user RLS + FK indexes**) | Database reproducible; portfolio artifact |
+| `sql/schema.sql` | Full schema + RLS as a checked-in file (incl. `source_info` col + `study_identified_limitations` table + regenerable RLS + **`study_notes` table + per-user RLS + FK indexes** + **Task 7: `articles`/`claims`/`evidence_links` upgraded to `user_id DEFAULT auth.uid()`, own RLS `FOR ALL TO authenticated`, explicit GRANTs, FK/RLS indexes, migration section**) | Database reproducible; portfolio artifact |
+| `src/lib/articles.ts` | Shared Task 7 domain types: `EvidenceRelationship` (supports/contradicts/mixed/contextual) + label/color maps, `LinkableStudy`, `DraftLink`, `DraftClaim`, `ArticleDraft` | Single source of truth for the evidence-graph UI |
+| `src/app/articles/page.tsx` | `/articles` server shell (header + `AuthStatus`) rendering `<ArticlesList>` | Task 7; entry point to the Evidence Notebook |
+| `src/app/articles/ArticlesList.tsx` | Client list of the signed-in user's own articles (RLS-locked) with "New article" (INSERT then navigate to editor) | Task 7; overview + create |
+| `src/app/articles/[id]/page.tsx` | `/articles/[id]` server shell passing the id to `<ArticleEditor>` (Next.js 16 `params`-as-`Promise`) | Task 7; dynamic route |
+| `src/app/articles/[id]/ArticleEditor.tsx` | Full article editor: title + content textareas, add/remove/edit claims, per-claim study picker (searches saved `studies`) + relationship dropdown, diff-save (INSERT/UPDATE/DELETE across articles/claims/evidence_links), second-save safe (real IDs patched back into the draft) | Task 7; the core UI |
+| `src/components/StudyReferences.tsx` | Study-page widget: lists the signed-in user's claims that reference this study (relationship badge + article link); login/save hints otherwise | Task 7; closes the loop — the study page shows which claims cite it |
 | `src/lib/ai.ts` | Server-only DeepSeek helper: `extractStudyContext(title, abstract, fullText?)` → validated `StudyContext` + `IdentifiedLimitation[]` | `deepseek-chat` default; strict JSON validation; two-tier limitations |
 | `.env.example` | Committed template of required env vars (no secrets) + GitHub OAuth note | `.env*` stays git-ignored except this file |
 
@@ -205,7 +212,8 @@ All of this is **committed and pushed** to GitHub (`main`).
 4. **Study breakdown** — AI-generated: research question / who was studied / how conducted / findings / paper-stated limitations + identified limitations (each with a `based_on` quote), `sourceInfo` badge, Generate/Regenerate button, loading skeleton, error states
 5. **Evidence context** — placeholder for the factor explanations (no credibility score)
 6. **What this might mean for training** — placeholder for cautious practical interpretation
-7. **Personal notes** (Task 6) — login-gated textarea saving to `study_notes`; private to the signed-in user
+7. **References in your articles** (Task 7) — the signed-in user's claims referencing this study, with relationship badge + link back to the article; hint to save the study first when unsaved
+8. **Personal notes** (Task 6) — login-gated textarea saving to `study_notes`; private to the signed-in user
 
 ---
 
@@ -226,7 +234,9 @@ All of this is **committed and pushed** to GitHub (`main`).
 - ✅ **Library page (Task 4)** — `/library` lists saved studies from `studies` newest-first (server component, `export const dynamic = "force-dynamic"` so newly-saved studies always appear); reuses home-page card markup, links to `/study/[pmid]`, has empty + error states; Library nav link added to the home page header
 - ✅ **Ranked search (Task 5)** — `searchPubMed` now sends `sort=relevance` to ESearch, delegating ranking to NCBI's own "Best Match" ML algorithm (the same one used on pubmed.ncbi.nlm.nih.gov). This ranks results by relevance without filtering any — result count is unchanged (verified: "internal external rotation bicep" → still 228 hits). Default ESearch order is newest-first by PMID; Best Match surfaces the most-relevant studies regardless of recency.
 - ✅ **Notes on studies (Task 6)** — Supabase GitHub OAuth via `@supabase/ssr` (`/auth/callback` exchange + `AuthStatus` header widget); `study_notes` table (keyed `(user_id, study_id)`, `UNIQUE` constraint, `user_id DEFAULT auth.uid()`) locked by RLS to the owner; `PersonalNotes` editor on the study page hidden behind a login prompt; `tsc --noEmit` clean
+- ✅ **Article/claim system (Task 7)** — `/articles` list + create, `/articles/[id]` editor (title, content, per-claim evidence links to saved studies with supports/contradicts/mixed/contextual), study page "References in your articles" widget; schema upgraded (`articles`/`claims`/`evidence_links` → `user_id DEFAULT auth.uid()` + per-user `FOR ALL TO authenticated` RLS + `REVOKE ALL FROM anon`/`GRANT ALL TO authenticated` + FK/RLS indexes + empty-table migration); `tsc --noEmit` clean AND `npm run build` passes
 - ✅ `tsc --noEmit` passes clean
+- ✅ `npm run build` passes clean (Next.js 16 production build, Turbopack)
 - ✅ Living doc (this file)
 
 **Editor note:** if VS Code shows "Cannot find module './StudyDetail'", it's a stale TS-server cache — the file exists and `tsc` resolves it. Restart the TS server (or save any file) to clear it.
@@ -240,10 +250,10 @@ Why it's a good test case: it's exactly the kind of study that lacks context in 
 
 ## 11. Roadmap position & next steps
 
-We are working through a 24-phase roadmap (from the project brief). Position ≈ **Phase 12 (personal notes)**. Priority hierarchy:
+We are working through a 24-phase roadmap (from the project brief). Position ≈ **Phase 15 (articles/claims/evidence links done; next is the evidence graph)**. Priority hierarchy:
 
 - 🔴 **Must work:** PubMed → Study → Study Context → Evidence Context ✅ (core flow wired; extraction rendered + persisted)
-- 🟠 **Very important:** Notes ✅ (Task 6) → Articles → Claims → Evidence Links
+- 🟠 **Very important:** Notes ✅ (Task 6) → Articles → Claims → Evidence Links ✅ (Task 7)
 - 🟡 **High-value stretch:** AI simplification → Claim alignment
 - 🟢 **Stretch:** evidence graph → polish
 - ⚪ **Completely optional:** social / monetisation / mobile
@@ -256,7 +266,8 @@ We are working through a 24-phase roadmap (from the project brief). Position ≈
 4. ✅ **Library page** (`/library`) — server component lists saved studies from `studies` newest-first (`export const dynamic = "force-dynamic"`); home-page card markup reused; empty + error states; nav link on home page.
 5. ✅ **Ranked search** — `sort=relevance` (NCBI Best Match) added to ESearch in `searchPubMed`; verified against "internal external rotation bicep" (still 228 results, relevance-ordered; no filtering).
 6. ✅ **Notes on studies (Task 6)** — Supabase GitHub OAuth + `study_notes` table (RLS-locked, `user_id DEFAULT auth.uid()`) + login-gated `PersonalNotes` editor. **User actions:** (a) run updated `sql/schema.sql` in Supabase, (b) enable GitHub in Authentication → Providers with the Client ID/Secret, (c) set GitHub's authorization callback URL to Supabase's internal `https://<project-ref>.supabase.co/auth/v1/callback`, and (d) add `<app-url>/auth/callback` to Supabase URL Configuration → Redirect URLs (see §12.5 / `.env.example`).
-7. **Article/claim system** — consumes studies discovered through the Explorer (Phase 13-15).
+7. ✅ **Article/claim system (Task 7)** — `/articles` (list + create), `/articles/[id]` editor (title, content, per-claim evidence links to saved studies with supports/contradicts/mixed/contextual), study page "References in your articles"; schema upgraded (`articles`/`claims`/`evidence_links` → `user_id DEFAULT auth.uid()`, RLS `FOR ALL TO authenticated`, GRANTs, FK/RLS indexes, migration). **User action:** apply the updated `sql/schema.sql` in Supabase — the Task 7 migration drops+recreates the (guaranteed-empty) `claims`/`evidence_links`/`articles` tables with the new shape.
+8. **Evidence graph (Task 8)** — visualize ARTICLES → CLAIMS → EVIDENCE_LINKS → STUDIES as an interactive graph; surface contradicting/mixed relationships.
 
 ### Workflow rule going forward
 > One small feature at a time → the plan/approach is explained first → implemented → tested → committed. No more autonomous large builds.
@@ -281,7 +292,7 @@ This project is developed in short agent-chat sessions. A fresh agent should be 
 - **Two-tier limitations:** `limitations` = what the paper states; `identified_limitations` = AI-derived, each with a required `based_on` quote from a stated fact. Never invented.
 - **Read full text when available:** via PMC (open access). `sourceInfo` field (`full_text` / `abstract_only` / `provided_text`) tells the UI what the AI actually read.
 - **Cheap model default:** `DEEPSEEK_MODEL` defaults to `deepseek-chat` in `src/lib/ai.ts`. Only use a stronger model for claim↔evidence alignment later.
-- **RLS:** `studies` = public SELECT + INSERT only (no UPDATE/DELETE). `study_context` = SELECT+INSERT+UPDATE (regenerable). `study_identified_limitations` = SELECT+INSERT+DELETE (regenerated wholesale). **`study_notes` = PRIVATE, `FOR ALL TO authenticated` with `auth.uid() = user_id`, `user_id DEFAULT auth.uid()`.** Other user-owned tables locked until auth.
+- **RLS:** `studies` = public SELECT + INSERT only (no UPDATE/DELETE). `study_context` = SELECT+INSERT+UPDATE (regenerable). `study_identified_limitations` = SELECT+INSERT+DELETE (regenerated wholesale). **`study_notes` = PRIVATE, `FOR ALL TO authenticated` with `auth.uid() = user_id`, `user_id DEFAULT auth.uid()`.** **`articles`/`claims`/`evidence_links` (Task 7) = same PRIVATE model — `FOR ALL TO authenticated`, `auth.uid() = user_id`, `user_id DEFAULT auth.uid()`, explicit `GRANT ALL TO authenticated` + `REVOKE ALL FROM anon`.** `study_assessments` stays locked until its feature is built.
 - **Auth (Task 6):** GitHub OAuth via `@supabase/ssr`. Browser client = `src/lib/supabase/browser.ts`; server client = `src/lib/supabase/server.ts`; callback = `/auth/callback`. AuthState changes → `router.refresh()` where server props depend on save-state (studyId).
 - **Next.js 16 gotchas:** dynamic `params` is a `Promise` (must await); `cookies()` is async; `middleware` → `proxy`; check `node_modules/next/dist/docs/` before new Next features.
 - **Windows shell:** always use `npm.cmd`/`npx.cmd` in PowerShell (ps1 scripts are disabled); never chain with `&&` in PowerShell.
@@ -289,15 +300,15 @@ This project is developed in short agent-chat sessions. A fresh agent should be 
 ### 12.2 Current task queue
 Current task:
 
-**Task 7 (do this next): Article/claim system — user-written conclusions that consume saved studies from the Explorer.**
-- What: let a user write an article (wiki-style conclusion) that references studies they have saved, with individual claims and `evidence_links` (supports / contradicts / mixed / contextual) to those studies.
-- Product fit: this is the second piece of the Evidence Notebook (§3 hierarchy, tier 2) and unlocks the evidence graph later.
-- Head start: `articles`, `claims`, `evidence_links` tables already exist in `sql/schema.sql` with RLS enabled and **no public policies** (same trust model as `study_notes` — user-owned, `auth.uid()`-locked). Auth (GitHub OAuth) is already in place from Task 6, so this builds directly on it.
-- Deliverable: a user can create an article, add claims, and link claims to saved studies; the study page shows which claims reference it (when visited by the author, or render a public read-only view for non-authors — decide which).
-- Notes: `studies` stays public-read; `articles`/`claims`/`evidence_links` need `user_id`/ownership columns (the current `evidence_links` schema has no `user_id` — that must be resolved, e.g. join through `articles.user_id` or add `user_id`).
+**Task 8 (do this next): Evidence graph — visualize the evidence relationships.**
+- What: an interactive graph of the user's ARTICLES → CLAIMS → EVIDENCE_LINKS → STUDIES, whose edge colors already encode relationship (supports = green, contradicts = red, mixed = amber, contextual = blue via `RELATIONSHIP_COLORS` in `src/lib/articles.ts`).
+- Product fit: this is the third tier of the product hierarchy (§3) and the flagship visual "wow" for the SMU portfolio — it proves the evidence graph is real, not just a data model.
+- Head start: Task 7 built the data layer + editor + `StudyReferences` widget; `src/lib/articles.ts` already exports the relationship constants. Consider a `/graph` route (server shell + client component, same pattern as `/articles`) or an in-editor "graph view". Decide: SVG force-directed (self-contained, no deps) vs a small canvas lib — prefer no new dependencies for scope control.
+- Deliverable: a signed-in user can open a graph of their own evidence: articles (clusters), claims (per article), studies (linked), with relationship-colored edges; clicking a node navigates to the article editor / study page.
+- Notes: everything is already RLS-locked and indexed (`idx_evidence_links_*`); the graph query is evidence_links + claims + articles + studies, all filtered by the user's session. **Reminder: the Task 3/6/7 schema additions still need to be applied in Supabase for the save flows to work end-to-end (§10 / §12.5).**
 
 Then, in order:
-8. Optional/stretch: evidence graph, AI simplification, claim alignment, polish, deploy, test, docs.
+9. Optional/stretch: AI simplification → Claim alignment → polish → deploy → test → docs.
 
 ### 12.3 Files to read on resume (fastest path to full context)
 - `PROJECT_NOTES.md` (this file — deep context + history)
@@ -312,9 +323,13 @@ Then, in order:
 - `src/app/api/save-study/route.ts` — INSERT-only check-then-insert.
 - `src/app/api/search-pubmed/route.ts` — search endpoint.
 - `src/app/study/[pmid]/page.tsx` + `StudyDetail.tsx` + `PersonalNotes.tsx` — detail page (renders + persists context; Task 6 personal notes; `studyId` prop unlocks notes).
-- `src/app/page.tsx` — home search (header has `AuthStatus` + Library link).
-- `src/app/library/page.tsx` — Library page (Task 4; `export const dynamic = "force-dynamic"` pattern).
-- `sql/schema.sql` — schema + RLS (incl. `source_info`, `study_identified_limitations`, `study_notes` + per-user RLS + FK indexes, regenerable policies).
+- `src/components/StudyReferences.tsx` — Task 7 study-page widget (claims referencing a study, relationship-colored, article link).
+- `src/lib/articles.ts` — Task 7 shared domain: `EvidenceRelationship`, `RELATIONSHIP_LABELS`/`RELATIONSHIP_COLORS`, `LinkableStudy`, `DraftLink`, `DraftClaim`, `ArticleDraft` (reused by the graph later).
+- `src/app/articles/page.tsx` + `ArticlesList.tsx` — `/articles` home for the Evidence Notebook (create + list).
+- `src/app/articles/[id]/page.tsx` + `ArticleEditor.tsx` — the full article/claim/evidence-link editor (diff-save; second-save-safe).
+- `src/app/page.tsx` — home search (header has `AuthStatus` + Library link + My Articles link).
+- `src/app/library/page.tsx` — Library page (Task 4; `export const dynamic = "force-dynamic"` pattern; My Articles link).
+- `sql/schema.sql` — schema + RLS (incl. `source_info`, `study_identified_limitations`, `study_notes` + per-user RLS + FK indexes, regenerable policies + **Task 7: `articles`/`claims`/`evidence_links` user_id/auth.uid() + per-user RLS + GRANTs + FK/RLS indexes + migration**).
 - `.env.example` — required env vars + GitHub OAuth note (never commit `.env.local`).
 
 ### 12.4 Verified status (don't re-verify unless asked)
@@ -326,12 +341,13 @@ Then, in order:
 - `/library` (Task 4): ✅ HTTP 200; home page `/` with Library nav link: HTTP 200.
 - Ranked search (Task 5): ✅ `sort=relevance` verified against NCBI ESearch (returns relevance-ordered PMIDs; result count unchanged — no filtering); `tsc --noEmit` clean.
 - Task 6 (auth + notes): ✅ `tsc --noEmit` clean AND `npm run build` passes (Next.js 16 production build, Turbopack). The note save flow requires the `study_notes` RLS + table to exist in Supabase, so it is **not end-to-end verified until the user applies `sql/schema.sql`** and enables GitHub OAuth.
-- Git: clean on `main` (HEAD after Task 6 commit).
+- Task 7 (articles/claims/evidence links): ✅ `tsc --noEmit` clean AND `npm run build` passes (Next.js 16, Turbopack) with `/articles` and `/articles/[id]` registered. The save/link flow is **not end-to-end verified until the user applies the updated `sql/schema.sql`** (Task 7 migration recreates `articles`/`claims`/`evidence_links` with `user_id`, RLS policies and GRANTs) and GitHub OAuth is enabled.
+- Git: uncommitted on `main` (Task 7 work staged for commit).
 
 ### 12.5 Environment notes
 - `.env.local` already contains `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `DEEPSEEK_API_KEY` (user set it). `DEEPSEEK_MODEL` optional. **GitHub OAuth needs no env vars** - configured in TWO dashboards: (1) GitHub -> OAuth App -> "Authorization callback URL" must point to Supabase's INTERNAL callback `https://<project-ref>.supabase.co/auth/v1/callback` (copy it from Supabase Authentication -> Providers -> GitHub, "Callback URL") - NOT the app URL; (2) Supabase -> Authentication -> URL Configuration -> Redirect URLs -> add `<app-url>/auth/callback` (e.g. http://localhost:3000/**). See .env.example for the full walkthrough.
 - Dev server: restart after env change (`npm.cmd run dev`). If port 3000 busy: `taskkill /PID <pid> /F`.
-- Supabase project is live (don't re-run full schema unless asked; `sql/schema.sql` is source of truth — but the Task 3 + Task 6 additions DO need to be applied once for context persistence AND notes: `source_info` column, `study_identified_limitations` table + index + regenerable RLS, `study_notes` table + per-user RLS + FK indexes).
+- Supabase project is live (don't re-run full schema unless asked; `sql/schema.sql` is source of truth — but the Task 3 + Task 6 + **Task 7** additions DO need to be applied once for context persistence, notes AND articles: `source_info` column, `study_identified_limitations` table + index + regenerable RLS, `study_notes` table + per-user RLS + FK indexes, and the Task 7 migration which DROPs + recreates `articles`/`claims`/`evidence_links` empty with `user_id DEFAULT auth.uid()`, per-user RLS policies + GRANTs).
 - Test PMIDs: **35819335** (the key "missing context" case), **42605311** (open access full text).
 
 ### 12.6 Every session must end with

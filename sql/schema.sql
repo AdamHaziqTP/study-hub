@@ -101,29 +101,65 @@ CREATE TABLE IF NOT EXISTS study_assessments (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
+-- 4b. Migration for existing deployments (Task 7)
+-- Before Task 7, `articles`/`claims` had no user_id and `evidence_links` had a
+-- composite (claim_id, study_id) PRIMARY KEY with no id/user_id. No feature
+-- ever wrote rows to them (RLS-locked since creation), so they are guaranteed
+-- EMPTY — a drop-and-recreate is zero-loss and far simpler than in-place
+-- ALTERs (which would leave the old `user_id` WITHOUT the auth.uid() default).
+-- On a fresh database these are no-ops and the CREATE TABLE IF NOT EXISTS
+-- statements below build the final shape. Drop child-first for FK ordering.
+DROP TABLE IF EXISTS evidence_links;
+DROP TABLE IF EXISTS claims;
+DROP TABLE IF EXISTS articles;
+
 -- 5. Articles Table (user's wiki-style notes/conclusions)
+--    user_id references auth.users directly (same trust model as study_notes)
+--    and DEFAULTS to auth.uid() so the client never sends it.
 CREATE TABLE IF NOT EXISTS articles (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-  user_id UUID REFERENCES users(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   title TEXT NOT NULL,
   content TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
 -- 6. Claims Table (specific statements within an article)
+--    user_id defaults to auth.uid() so RLS can lock rows to the owner just
+--    like study_notes / articles.
 CREATE TABLE IF NOT EXISTS claims (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   article_id UUID REFERENCES articles(id) ON DELETE CASCADE NOT NULL,
-  text TEXT NOT NULL
+  user_id UUID DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  text TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
 -- 7. Evidence Links (the core graph relationship)
+--    Surrogate `id` PK (so the client can update/delete one link row by id) +
+--    a UNIQUE (claim_id, study_id) pair so one claim cannot link the same
+--    study twice. user_id defaults to auth.uid() so RLS locks rows to the
+--    owner, same as articles / claims / study_notes.
 CREATE TABLE IF NOT EXISTS evidence_links (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   claim_id UUID REFERENCES claims(id) ON DELETE CASCADE NOT NULL,
   study_id UUID REFERENCES studies(id) ON DELETE CASCADE NOT NULL,
+  user_id UUID DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
   relationship TEXT CHECK (relationship IN ('supports', 'contradicts', 'mixed', 'contextual')) NOT NULL,
-  PRIMARY KEY (claim_id, study_id)
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  UNIQUE (claim_id, study_id)
 );
+
+-- Evidence graph FK + RLS indexes (articles/claims/evidence_links). Postgres
+-- does not auto-index FKs, and the RLS policies filter on user_id, so every
+-- lookup below is index-backed (per Supabase RLS performance guidance).
+CREATE INDEX IF NOT EXISTS idx_articles_user_id ON articles (user_id);
+CREATE INDEX IF NOT EXISTS idx_claims_article_id ON claims (article_id);
+CREATE INDEX IF NOT EXISTS idx_claims_user_id ON claims (user_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_links_claim_id ON evidence_links (claim_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_links_study_id ON evidence_links (study_id);
+CREATE INDEX IF NOT EXISTS idx_evidence_links_user_id ON evidence_links (user_id);
 
 -- ============================================================
 -- Row Level Security policies
@@ -146,11 +182,45 @@ DROP POLICY IF EXISTS "Public insert studies" ON studies;
 CREATE POLICY "Public insert studies" ON studies
   FOR INSERT WITH CHECK (true);
 
--- === Protected user-owned tables (require authentication, added later) ===
+-- === Protected user-owned tables (require authentication) ===
 ALTER TABLE study_assessments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE claims ENABLE ROW LEVEL SECURITY;
 ALTER TABLE evidence_links ENABLE ROW LEVEL SECURITY;
+
+-- === articles / claims / evidence_links = PRIVATE user-owned evidence graph ===
+-- Same trust model as study_notes: FOR ALL TO authenticated, locked to
+-- auth.uid() = user_id with WITH CHECK so a user can never see or write a row
+-- on someone else's behalf. user_id DEFAULTS to auth.uid() in the DB — the
+-- client never sends it.
+DROP POLICY IF EXISTS "Users can manage their own articles" ON articles;
+CREATE POLICY "Users can manage their own articles" ON articles
+  FOR ALL
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can manage their own claims" ON claims;
+CREATE POLICY "Users can manage their own claims" ON claims
+  FOR ALL
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can manage their own evidence links" ON evidence_links;
+CREATE POLICY "Users can manage their own evidence links" ON evidence_links
+  FOR ALL
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+-- === Explicit grants =====================================================
+-- The user-owned tables are PRIVATE: anon/public gets NOTHING, authenticated
+-- gets the full lifecycle of their own rows (RLS enforces the ownership
+-- boundary). These statements make the permissions explicit — REVOKE from
+-- anon is belt-and-suspenders on top of the "no public policies" rule.
+REVOKE ALL ON articles, claims, evidence_links, study_notes FROM anon;
+GRANT ALL ON articles, claims, evidence_links, study_notes TO authenticated;
 
 -- === study_context = shared REGENERABLE derived library =================
 -- Unlike `studies` (immutable source), context is derived AI output that is
