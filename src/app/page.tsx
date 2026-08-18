@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 interface Study {
   pmid: string;
   title: string;
   authors: string;
   journal: string;
-  publication_date: string;
+  publicationDate: string | null;
   abstract: string;
 }
 
@@ -61,17 +62,24 @@ export default function Home() {
         <div className="flex flex-col gap-6">
           {results.map((study) => (
             <div key={study.pmid} className="border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow bg-white">
-              <h2 className="text-xl font-semibold mb-2 text-gray-900 leading-snug">{study.title}</h2>
+              <Link href={`/study/${study.pmid}`}>
+                <h2 className="text-xl font-semibold mb-2 text-gray-900 leading-snug hover:text-blue-700 transition-colors">
+                  {study.title}
+                </h2>
+              </Link>
               <div className="text-sm text-gray-500 mb-4 font-medium">
-                {study.authors} • <span className="italic">{study.journal}</span> ({study.publication_date}) • PMID: {study.pmid}
+                {study.authors} • <span className="italic">{study.journal}</span> ({study.publicationDate?.slice(0, 4) ?? "Unknown year"}) • PMID: {study.pmid}
               </div>
               <p className="text-gray-700 text-sm line-clamp-3 mb-4 leading-relaxed">
                 {study.abstract}
               </p>
               <div className="flex justify-end">
-                <button className="bg-gray-100 text-gray-900 px-4 py-2 rounded-md text-sm font-semibold hover:bg-gray-200 transition-colors border border-gray-300">
-                  Save to Database (Coming Next)
-                </button>
+                <Link
+                  href={`/study/${study.pmid}`}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors"
+                >
+                  View Study →
+                </Link>
               </div>
             </div>
           ))}
