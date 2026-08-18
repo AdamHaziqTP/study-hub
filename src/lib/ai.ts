@@ -99,6 +99,17 @@ export interface ClaimAlignment {
   reasoning: string;
 }
 
+/**
+ * Job 4 output (Task 15 — Smart AI-Assisted Search): a layman question
+ * translated into an optimized PubMed search query.
+ */
+export interface TranslatedPubMedQuery {
+  /** The PubMed search string — valid for the NCBI E-util esearch endpoint (db=pubmed). */
+  query: string;
+  /** 1–2 sentence plain-English note on what the query targets. */
+  explanation: string | null;
+}
+
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 
 function getApiKey(): string {
@@ -496,4 +507,63 @@ export async function assessClaimAlignment(input: {
   }
 
   return { verdict, reasoning };
+}
+
+const TRANSLATE_QUERY_SYSTEM_PROMPT = `You are a biomedical-search specialist for an exercise-science research app.
+A non-scientist lifter has asked a natural-language question. Translate it into an optimized
+PubMed search query (NCBI E-utilities, db=pubmed) that will find the most relevant studies.
+
+Target query style:
+- Combine title/abstract keywords for the core concepts, e.g. (training frequency[tiab]) AND (muscle hypertrophy[tiab]).
+- Use MeSH-ish terms where natural (e.g. "Resistance Training"[Mesh]) and boolean operators (AND/OR/NOT).
+- Group OR-synonyms in parentheses so the search captures common phrasings (e.g. (overhead extension OR overhead triceps OR long head triceps)).
+- Prefer English keywords likely to appear in titles and abstracts. Do NOT translate into other languages.
+- Where the question implies a population or comparison (e.g. trained vs untrained, frequency comparisons), reflect it if it is genuinely useful; otherwise keep the query broad so the app's "rank, don't filter" rule still surfaces borderline-relevant studies.
+- Do NOT add filters the user did not ask for (no date/type/species filters unless the question implies them).
+
+Rules:
+- The query MUST be a single, valid PubMed query string. Do NOT use PubMed's newer full-text field tags you are unsure of — stick to [tiab], [Mesh], [Title], and plain boolean grouping.
+- Keep it to ONE query (no multiple-choice alternatives).
+- Never answer the question itself; only produce the search query.
+
+Return ONLY valid JSON matching this exact shape:
+{
+  "query": string,
+  "explanation": string | null
+}
+
+"explanation" is an optional 1-2 sentence plain-English note on what the query targets
+(e.g. "Searches for studies on training frequency and muscle hypertrophy in titles and
+abstracts, using MeSH terms and common synonyms."). Use null only if you have nothing useful to say.`;
+
+/**
+ * Job-4 query translation (Task 15 — Smart AI-Assisted Search): a layman
+ * question -> an optimized PubMed query string, server-side only (DeepSeek
+ * key). Uses the SAME cheap fast model as every other job — no heavier-model
+ * logic.
+ */
+export async function translateToPubMedQuery(question: string): Promise<TranslatedPubMedQuery> {
+  const raw = await callDeepSeek(TRANSLATE_QUERY_SYSTEM_PROMPT, question);
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("AI output was not valid JSON");
+  }
+
+  const query =
+    typeof parsed.query === "string" && parsed.query.trim() !== ""
+      ? parsed.query.trim()
+      : null;
+  if (!query) {
+    throw new Error("AI output was missing a query string");
+  }
+
+  const explanation =
+    typeof parsed.explanation === "string" && parsed.explanation.trim() !== ""
+      ? parsed.explanation.trim()
+      : null;
+
+  return { query, explanation };
 }
