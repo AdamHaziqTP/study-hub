@@ -1,8 +1,10 @@
+"use client";
+
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/browser";
 
 /**
- * AuthStatus — header-level sign-in / sign-out control.
+ * AuthStatus - header-level sign-in / sign-out control.
  *
  * Uses the @supabase/ssr browser client (cookie-based session). When signed
  * in it shows the user's GitHub identity + a sign-out button; otherwise a
@@ -11,6 +13,10 @@ import { createClient } from "@/lib/supabase/browser";
  * The OAuth redirect is threaded so the user lands BACK on the page they
  * were on after authenticating:
  *   /auth/callback?next=<pathname>
+ *
+ * NOTE: This is a CLIENT COMPONENT (uses hooks + the browser cookie client),
+ * so it must be imported from server components like the Library page only
+ * as a child component - which Next.js renders on the client automatically.
  */
 export default function AuthStatus() {
   const [user, setUser] = useState<{ email?: string; userName?: string } | null>(null);
@@ -81,7 +87,7 @@ export default function AuthStatus() {
           disabled={busy}
           className="border border-gray-300 bg-white text-gray-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-gray-100 transition-colors disabled:opacity-50"
         >
-          {busy ? "Signing out…" : "Sign out"}
+          {busy ? "Signing out..." : "Sign out"}
         </button>
       </div>
     );
@@ -93,7 +99,7 @@ export default function AuthStatus() {
       disabled={busy}
       className="bg-gray-900 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-700 transition-colors disabled:opacity-50"
     >
-      {busy ? "Redirecting…" : "Sign in with GitHub"}
+      {busy ? "Redirecting..." : "Sign in with GitHub"}
     </button>
   );
 }
