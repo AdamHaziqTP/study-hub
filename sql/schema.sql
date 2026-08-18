@@ -281,3 +281,7 @@ CREATE POLICY "Users can manage their own notes" ON study_notes
 DROP POLICY IF EXISTS "Public read study assessments" ON study_assessments;
 CREATE POLICY "Public read study assessments" ON study_assessments
   FOR SELECT USING (true);
+
+
+GRANT ALL ON public.study_notes TO authenticated;
+GRANT ALL ON public.study_notes TO service_role;

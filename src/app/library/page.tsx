@@ -62,6 +62,12 @@ export default async function LibraryPage() {
               My Articles →
             </Link>
             <Link
+              href="/graph"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+            >
+              Evidence Graph →
+            </Link>
+            <Link
               href="/"
               className="text-sm font-medium text-blue-600 hover:text-blue-800"
             >

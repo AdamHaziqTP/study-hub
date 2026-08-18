@@ -54,6 +54,12 @@ export default function Home() {
             >
               My Articles →
             </Link>
+            <Link
+              href="/graph"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+            >
+              Evidence Graph →
+            </Link>
           </div>
         </div>
 

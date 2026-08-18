@@ -88,6 +88,7 @@ These exist because the original idea drifted toward "AI tells you if a study is
 | Auth | **Supabase GitHub OAuth** | First user-owned feature (Task 6) needs real accounts. OAuth beats hardcoded test users (unprofessional for a portfolio) and email magic links (SMTP/spam-filter headaches). GitHub OAuth ties onto the GitHub account holding the student developer benefits; ~2 minutes to configure in the dashboards. |
 | External research data | **NCBI PubMed E-utilities** | The authoritative open API for biomedical literature. Two-step: `esearch` → PMIDs, then `efetch` → full XML. |
 | AI | **DeepSeek API** | Cheap structured extraction; model chosen explicitly in code (see §8). |
+| Graph physics | **d3-force** | The task explicitly required using d3-force for the force-directed layout math (forceLink / forceManyBody / forceCollide / forceCenter). Rendering stays a self-contained SVG (`src/app/graph/EvidenceGraph.tsx`). |
 | Hosting | **Vercel + Supabase** (planned) | Natural fits for Next.js + Postgres. |
 
 ### Why Next.js 16 matters for the code
@@ -195,12 +196,14 @@ All of this is **committed and pushed** to GitHub (`main`).
 | `src/app/page.tsx` | Search home page; cards link to `/study/[pmid]`; header now has `AuthStatus` + Library link | The entry point of the Explorer |
 | `src/app/library/page.tsx` | Library page (`/library`): server component listing saved studies from `studies` newest-first with the home-page card markup, empty + error states, and a "Back to search" link; header has `AuthStatus` | Task 4; public shared-library view (`studies` = shared reference library) |
 | `sql/schema.sql` | Full schema + RLS as a checked-in file (incl. `source_info` col + `study_identified_limitations` table + regenerable RLS + **`study_notes` table + per-user RLS + FK indexes** + **Task 7: `articles`/`claims`/`evidence_links` upgraded to `user_id DEFAULT auth.uid()`, own RLS `FOR ALL TO authenticated`, explicit GRANTs, FK/RLS indexes, migration section**) | Database reproducible; portfolio artifact |
-| `src/lib/articles.ts` | Shared Task 7 domain types: `EvidenceRelationship` (supports/contradicts/mixed/contextual) + label/color maps, `LinkableStudy`, `DraftLink`, `DraftClaim`, `ArticleDraft` | Single source of truth for the evidence-graph UI |
+| `src/lib/articles.ts` | Shared Task 7/8 domain types: `EvidenceRelationship` (supports/contradicts/mixed/contextual) + label/color maps (`RELATIONSHIP_LABELS`/`RELATIONSHIP_COLORS`/`RELATIONSHIP_HEX` for SVG), `LinkableStudy`, `DraftLink`, `DraftClaim`, `ArticleDraft` | Single source of truth for the evidence-graph UI (badges AND SVG edges) |
 | `src/app/articles/page.tsx` | `/articles` server shell (header + `AuthStatus`) rendering `<ArticlesList>` | Task 7; entry point to the Evidence Notebook |
 | `src/app/articles/ArticlesList.tsx` | Client list of the signed-in user's own articles (RLS-locked) with "New article" (INSERT then navigate to editor) | Task 7; overview + create |
 | `src/app/articles/[id]/page.tsx` | `/articles/[id]` server shell passing the id to `<ArticleEditor>` (Next.js 16 `params`-as-`Promise`) | Task 7; dynamic route |
 | `src/app/articles/[id]/ArticleEditor.tsx` | Full article editor: title + content textareas, add/remove/edit claims, per-claim study picker (searches saved `studies`) + relationship dropdown, diff-save (INSERT/UPDATE/DELETE across articles/claims/evidence_links), second-save safe (real IDs patched back into the draft) | Task 7; the core UI |
 | `src/components/StudyReferences.tsx` | Study-page widget: lists the signed-in user's claims that reference this study (relationship badge + article link); login/save hints otherwise | Task 7; closes the loop — the study page shows which claims cite it |
+| `src/app/graph/page.tsx` | `/graph` server shell (header + `AuthStatus` + nav) rendering `<EvidenceGraph>`; `force-dynamic` | Task 8; entry point to the visual evidence graph |
+| `src/app/graph/EvidenceGraph.tsx` | Task 8 client component: loads the user's ARTICLES → CLAIMS → EVIDENCE_LINKS → STUDIES via the browser Supabase client (RLS-locked), builds a graph data structure, runs **d3-force** (`forceLink`/`forceManyBody`/`forceCollide`/`forceCenter`) over it, and renders a self-contained SVG (relationship-colored edges via `RELATIONSHIP_HEX`, arrowheads on evidence edges, legend, node counts). Clicking a node navigates to the article editor (`/articles/[id]`) or study page (`/study/[pmid]`) | Task 8; the flagship portfolio "wow" — a real, interactive evidence graph |
 | `src/lib/ai.ts` | Server-only DeepSeek helper: `extractStudyContext(title, abstract, fullText?)` → validated `StudyContext` + `IdentifiedLimitation[]` | `deepseek-chat` default; strict JSON validation; two-tier limitations |
 | `.env.example` | Committed template of required env vars (no secrets) + GitHub OAuth note | `.env*` stays git-ignored except this file |
 
@@ -230,11 +233,12 @@ All of this is **committed and pushed** to GitHub (`main`).
 - ✅ Two-tier limitations — paper-stated vs AI-derived-with-`based_on`
 - ✅ **Study breakdown populated on the detail page** (`StudyDetail.tsx` renders validated `StudyContext` + badge + skeleton + errors; Task 2)
 - ✅ **Context persisted (Task 3)** — `/api/save-context` upserts into `study_context` (+ `study_identified_limitations` child rows); `page.tsx` loads saved context DB-first; schema updated with `source_info` + child table + regenerable RLS (SELECT+INSERT+UPDATE on study_context; SELECT+INSERT+DELETE on child)
-- ⏳ **Action required by user:** run the updated `sql/schema.sql` in Supabase (adds `source_info` column, `study_identified_limitations` table + index + regenerable RLS policies — AND, since Task 6, the `study_notes` table + per-user RLS + FK indexes) so "Generate context" persistence and personal notes both work
+- ⏳ **Action required by user:** run the updated `sql/schema.sql` in Supabase (adds `source_info` column, `study_identified_limitations` table + index + regenerable RLS policies, the `study_notes` table + per-user RLS + FK indexes — AND the Task 7 migration that recreates `articles`/`claims`/`evidence_links` with `user_id DEFAULT auth.uid()`, per-user RLS + GRANTs, FK/RLS indexes) so context persistence, personal notes, the article editor AND the evidence graph all work end-to-end
 - ✅ **Library page (Task 4)** — `/library` lists saved studies from `studies` newest-first (server component, `export const dynamic = "force-dynamic"` so newly-saved studies always appear); reuses home-page card markup, links to `/study/[pmid]`, has empty + error states; Library nav link added to the home page header
 - ✅ **Ranked search (Task 5)** — `searchPubMed` now sends `sort=relevance` to ESearch, delegating ranking to NCBI's own "Best Match" ML algorithm (the same one used on pubmed.ncbi.nlm.nih.gov). This ranks results by relevance without filtering any — result count is unchanged (verified: "internal external rotation bicep" → still 228 hits). Default ESearch order is newest-first by PMID; Best Match surfaces the most-relevant studies regardless of recency.
 - ✅ **Notes on studies (Task 6)** — Supabase GitHub OAuth via `@supabase/ssr` (`/auth/callback` exchange + `AuthStatus` header widget); `study_notes` table (keyed `(user_id, study_id)`, `UNIQUE` constraint, `user_id DEFAULT auth.uid()`) locked by RLS to the owner; `PersonalNotes` editor on the study page hidden behind a login prompt; `tsc --noEmit` clean
 - ✅ **Article/claim system (Task 7)** — `/articles` list + create, `/articles/[id]` editor (title, content, per-claim evidence links to saved studies with supports/contradicts/mixed/contextual), study page "References in your articles" widget; schema upgraded (`articles`/`claims`/`evidence_links` → `user_id DEFAULT auth.uid()` + per-user `FOR ALL TO authenticated` RLS + `REVOKE ALL FROM anon`/`GRANT ALL TO authenticated` + FK/RLS indexes + empty-table migration); `tsc --noEmit` clean AND `npm run build` passes
+- ✅ **Evidence graph (Task 8)** — `/graph` route (server shell + `<EvidenceGraph>` client component, same pattern as `/articles`); loads the user's ARTICLES → CLAIMS → EVIDENCE_LINKS → STUDIES via the RLS-locked browser client; **d3-force** (`forceLink`/`forceManyBody`/`forceCollide`/`forceCenter`) does ALL the physics; self-contained SVG renders relationship-colored edges (`RELATIONSHIP_HEX` added to `src/lib/articles.ts`), arrowheads on evidence edges, legend + node counts, and click-to-navigate (article editor / study page); `Evidence Graph` nav link added to home, library, and articles pages; `tsc --noEmit` clean AND `npm run build` passes with `/graph` registered
 - ✅ `tsc --noEmit` passes clean
 - ✅ `npm run build` passes clean (Next.js 16 production build, Turbopack)
 - ✅ Living doc (this file)
@@ -250,12 +254,12 @@ Why it's a good test case: it's exactly the kind of study that lacks context in 
 
 ## 11. Roadmap position & next steps
 
-We are working through a 24-phase roadmap (from the project brief). Position ≈ **Phase 15 (articles/claims/evidence links done; next is the evidence graph)**. Priority hierarchy:
+We are working through a 24-phase roadmap (from the project brief). Position ≈ **Phase 16 (evidence graph done; next is polish/stretch)**. Priority hierarchy:
 
 - 🔴 **Must work:** PubMed → Study → Study Context → Evidence Context ✅ (core flow wired; extraction rendered + persisted)
 - 🟠 **Very important:** Notes ✅ (Task 6) → Articles → Claims → Evidence Links ✅ (Task 7)
 - 🟡 **High-value stretch:** AI simplification → Claim alignment
-- 🟢 **Stretch:** evidence graph → polish
+- 🟢 **Stretch:** evidence graph ✅ (Task 8) → polish
 - ⚪ **Completely optional:** social / monetisation / mobile
 
 ### Immediate next steps (one small, testable step at a time)
@@ -267,7 +271,8 @@ We are working through a 24-phase roadmap (from the project brief). Position ≈
 5. ✅ **Ranked search** — `sort=relevance` (NCBI Best Match) added to ESearch in `searchPubMed`; verified against "internal external rotation bicep" (still 228 results, relevance-ordered; no filtering).
 6. ✅ **Notes on studies (Task 6)** — Supabase GitHub OAuth + `study_notes` table (RLS-locked, `user_id DEFAULT auth.uid()`) + login-gated `PersonalNotes` editor. **User actions:** (a) run updated `sql/schema.sql` in Supabase, (b) enable GitHub in Authentication → Providers with the Client ID/Secret, (c) set GitHub's authorization callback URL to Supabase's internal `https://<project-ref>.supabase.co/auth/v1/callback`, and (d) add `<app-url>/auth/callback` to Supabase URL Configuration → Redirect URLs (see §12.5 / `.env.example`).
 7. ✅ **Article/claim system (Task 7)** — `/articles` (list + create), `/articles/[id]` editor (title, content, per-claim evidence links to saved studies with supports/contradicts/mixed/contextual), study page "References in your articles"; schema upgraded (`articles`/`claims`/`evidence_links` → `user_id DEFAULT auth.uid()`, RLS `FOR ALL TO authenticated`, GRANTs, FK/RLS indexes, migration). **User action:** apply the updated `sql/schema.sql` in Supabase — the Task 7 migration drops+recreates the (guaranteed-empty) `claims`/`evidence_links`/`articles` tables with the new shape.
-8. **Evidence graph (Task 8)** — visualize ARTICLES → CLAIMS → EVIDENCE_LINKS → STUDIES as an interactive graph; surface contradicting/mixed relationships.
+8. ✅ **Evidence graph (Task 8)** — `/graph` visualizes the signed-in user's ARTICLES → CLAIMS → EVIDENCE_LINKS → STUDIES as an interactive force-directed SVG (d3-force physics; relationship-colored edges; click node → article editor / study page). Nav link added to home, library, and articles pages.
+9. **AI simplification → Claim alignment → polish → deploy → test → docs (Task 9)** — optional/stretch; see §12.2.
 
 ### Workflow rule going forward
 > One small feature at a time → the plan/approach is explained first → implemented → tested → committed. No more autonomous large builds.
@@ -300,15 +305,12 @@ This project is developed in short agent-chat sessions. A fresh agent should be 
 ### 12.2 Current task queue
 Current task:
 
-**Task 8 (do this next): Evidence graph — visualize the evidence relationships.**
-- What: an interactive graph of the user's ARTICLES → CLAIMS → EVIDENCE_LINKS → STUDIES, whose edge colors already encode relationship (supports = green, contradicts = red, mixed = amber, contextual = blue via `RELATIONSHIP_COLORS` in `src/lib/articles.ts`).
-- Product fit: this is the third tier of the product hierarchy (§3) and the flagship visual "wow" for the SMU portfolio — it proves the evidence graph is real, not just a data model.
-- Head start: Task 7 built the data layer + editor + `StudyReferences` widget; `src/lib/articles.ts` already exports the relationship constants. Consider a `/graph` route (server shell + client component, same pattern as `/articles`) or an in-editor "graph view". Decide: SVG force-directed (self-contained, no deps) vs a small canvas lib — prefer no new dependencies for scope control.
-- Deliverable: a signed-in user can open a graph of their own evidence: articles (clusters), claims (per article), studies (linked), with relationship-colored edges; clicking a node navigates to the article editor / study page.
-- Notes: everything is already RLS-locked and indexed (`idx_evidence_links_*`); the graph query is evidence_links + claims + articles + studies, all filtered by the user's session. **Reminder: the Task 3/6/7 schema additions still need to be applied in Supabase for the save flows to work end-to-end (§10 / §12.5).**
-
-Then, in order:
-9. Optional/stretch: AI simplification → Claim alignment → polish → deploy → test → docs.
+**Task 9 (do this next): AI simplification / claim alignment — optional stretch.**
+- What: (a) **AI simplification** — a plain-English "explain this abstract to a curious lifter" pass (Job 2 from §4) rendered on the study page below the raw abstract; (b) **Claim alignment** — the genuinely-harder job: "does this claim accurately represent the studies linked to it?" using a *stronger* model (per §8 model strategy) against the claim text + the linked studies' abstracts/findings.
+- Product fit: simplification makes the Explorer accessible to a normal lifter; claim alignment strengthens the "no confirmation-bias machine" rule (§3) by surfacing *misaligned* claims for the user to fix in the editor.
+- Head start: `src/lib/ai.ts` already has `extractStudyContext` with a cheap model default + strict JSON validation — a sibling `simplifyStudy` / `assessClaimAlignment` helper can reuse the same pattern. `StudyContext.findings` is already rendered in the Study breakdown.
+- Deliverable: (a) "In plain English" block on `/study/[pmid]` (regenerable, persisted like context — maybe a new `study_simplifications` table or a column on `study_context`); (b) optionally a small "alignment check" chip/button in `ArticleEditor` per claim that calls a new `/api/assess-claim` and shows a verdict (aligned / partially aligned / unaligned) + reasoning.
+- Notes: keep scope tight — simplification alone is a solid Task 9; claim alignment is the "high-value stretch" that follows. **Reminder: the Task 3/6/7/8 schema + RLS already needs to be applied in Supabase; Task 9 may add a table but should reuse the existing regenerable/private RLS patterns (§7).**
 
 ### 12.3 Files to read on resume (fastest path to full context)
 - `PROJECT_NOTES.md` (this file — deep context + history)
@@ -324,11 +326,12 @@ Then, in order:
 - `src/app/api/search-pubmed/route.ts` — search endpoint.
 - `src/app/study/[pmid]/page.tsx` + `StudyDetail.tsx` + `PersonalNotes.tsx` — detail page (renders + persists context; Task 6 personal notes; `studyId` prop unlocks notes).
 - `src/components/StudyReferences.tsx` — Task 7 study-page widget (claims referencing a study, relationship-colored, article link).
-- `src/lib/articles.ts` — Task 7 shared domain: `EvidenceRelationship`, `RELATIONSHIP_LABELS`/`RELATIONSHIP_COLORS`, `LinkableStudy`, `DraftLink`, `DraftClaim`, `ArticleDraft` (reused by the graph later).
+- `src/lib/articles.ts` — Task 7/8 shared domain: `EvidenceRelationship`, `RELATIONSHIP_LABELS`/`RELATIONSHIP_COLORS`/**`RELATIONSHIP_HEX` (SVG edge colors)**, `LinkableStudy`, `DraftLink`, `DraftClaim`, `ArticleDraft`.
 - `src/app/articles/page.tsx` + `ArticlesList.tsx` — `/articles` home for the Evidence Notebook (create + list).
 - `src/app/articles/[id]/page.tsx` + `ArticleEditor.tsx` — the full article/claim/evidence-link editor (diff-save; second-save-safe).
-- `src/app/page.tsx` — home search (header has `AuthStatus` + Library link + My Articles link).
-- `src/app/library/page.tsx` — Library page (Task 4; `export const dynamic = "force-dynamic"` pattern; My Articles link).
+- `src/app/graph/page.tsx` + `EvidenceGraph.tsx` — Task 8 `/graph` evidence graph (server shell + client component; d3-force physics; relationship-colored SVG edges; click-to-navigate).
+- `src/app/page.tsx` — home search (header has `AuthStatus` + Library + My Articles + Evidence Graph links).
+- `src/app/library/page.tsx` — Library page (Task 4; `export const dynamic = "force-dynamic"` pattern; Evidence Graph + My Articles links).
 - `sql/schema.sql` — schema + RLS (incl. `source_info`, `study_identified_limitations`, `study_notes` + per-user RLS + FK indexes, regenerable policies + **Task 7: `articles`/`claims`/`evidence_links` user_id/auth.uid() + per-user RLS + GRANTs + FK/RLS indexes + migration**).
 - `.env.example` — required env vars + GitHub OAuth note (never commit `.env.local`).
 
@@ -342,7 +345,8 @@ Then, in order:
 - Ranked search (Task 5): ✅ `sort=relevance` verified against NCBI ESearch (returns relevance-ordered PMIDs; result count unchanged — no filtering); `tsc --noEmit` clean.
 - Task 6 (auth + notes): ✅ `tsc --noEmit` clean AND `npm run build` passes (Next.js 16 production build, Turbopack). The note save flow requires the `study_notes` RLS + table to exist in Supabase, so it is **not end-to-end verified until the user applies `sql/schema.sql`** and enables GitHub OAuth.
 - Task 7 (articles/claims/evidence links): ✅ `tsc --noEmit` clean AND `npm run build` passes (Next.js 16, Turbopack) with `/articles` and `/articles/[id]` registered. The save/link flow is **not end-to-end verified until the user applies the updated `sql/schema.sql`** (Task 7 migration recreates `articles`/`claims`/`evidence_links` with `user_id`, RLS policies and GRANTs) and GitHub OAuth is enabled.
-- Git: uncommitted on `main` (Task 7 work staged for commit).
+- Task 8 (evidence graph): ✅ **`d3-force` installed** (`^3.0.0` + `@types/d3-force`); `tsc --noEmit` clean AND `npm run build` passes (Next.js 16, Turbopack) with `/graph` registered. Auth/login-gated rendering on the client; the graph itself is **not end-to-end verified until the user applies the Task 7 schema** (articles/claims/evidence_links need `user_id` + RLS) and GitHub OAuth is enabled (same dependency as Task 7).
+- Git: **Task 8 committed and pushed** to `main`. There may be prior uncommitted Task 7 work merged into this commit depending on what was on disk at handoff.
 
 ### 12.5 Environment notes
 - `.env.local` already contains `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `DEEPSEEK_API_KEY` (user set it). `DEEPSEEK_MODEL` optional. **GitHub OAuth needs no env vars** - configured in TWO dashboards: (1) GitHub -> OAuth App -> "Authorization callback URL" must point to Supabase's INTERNAL callback `https://<project-ref>.supabase.co/auth/v1/callback` (copy it from Supabase Authentication -> Providers -> GitHub, "Callback URL") - NOT the app URL; (2) Supabase -> Authentication -> URL Configuration -> Redirect URLs -> add `<app-url>/auth/callback` (e.g. http://localhost:3000/**). See .env.example for the full walkthrough.

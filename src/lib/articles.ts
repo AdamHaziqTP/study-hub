@@ -14,6 +14,19 @@ export const RELATIONSHIP_COLORS: Record<EvidenceRelationship, string> = {
   contextual: "bg-blue-100 text-blue-800",
 };
 
+/**
+ * Hex equivalents of RELATIONSHIP_COLORS for SVG rendering (the evidence
+ * graph uses these directly in <line>/<path> stroke attributes, where Tailwind
+ * classes don't apply). Deliberately 600-level shades so edges read clearly on
+ * a white background.
+ */
+export const RELATIONSHIP_HEX: Record<EvidenceRelationship, string> = {
+  supports: "#16a34a", // green-600
+  contradicts: "#dc2626", // red-600
+  mixed: "#d97706", // amber-600
+  contextual: "#2563eb", // blue-600
+};
+
 /** A study the user can link to a claim (from the shared `studies` library). */
 export interface LinkableStudy {
   id: string;

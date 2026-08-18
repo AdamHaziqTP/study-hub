@@ -1,0 +1,566 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { createClient } from "@/lib/supabase/browser";
+import {
+  RELATIONSHIP_HEX,
+  RELATIONSHIP_LABELS,
+  type EvidenceRelationship,
+} from "@/lib/articles";
+import {
+  forceCenter,
+  forceCollide,
+  forceLink,
+  forceManyBody,
+  forceSimulation,
+  type Simulation,
+  type SimulationLinkDatum,
+  type SimulationNodeDatum,
+} from "d3-force";
+
+const WIDTH = 1100;
+const HEIGHT = 700;
+
+type NodeType = "article" | "claim" | "study";
+
+interface GraphNode extends SimulationNodeDatum {
+  id: string;
+  type: NodeType;
+  /** Short visible label (truncated). */
+  label: string;
+  /** Full text shown in the native SVG tooltip. */
+  fullLabel: string;
+  /** Where a click on this node navigates. */
+  href: string;
+  radius: number;
+  fill: string;
+  textFill: string;
+}
+
+interface GraphLink extends SimulationLinkDatum<GraphNode> {
+  id: string;
+  kind: "membership" | "evidence";
+  relationship?: EvidenceRelationship;
+  color: string;
+  source: string | GraphNode;
+  target: string | GraphNode;
+}
+
+interface GraphData {
+  nodes: GraphNode[];
+  links: GraphLink[];
+  counts: {
+    articles: number;
+    claims: number;
+    studies: number;
+    links: number;
+  };
+}
+
+const truncate = (text: string, max: number) => {
+  const trimmed = text.trim().replace(/\s+/g, " ");
+  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
+};
+
+/**
+ * EvidenceGraph — Task 8.
+ *
+ * Visualizes the signed-in user's evidence graph:
+ *   articles ──(membership)──> claims ──(evidence)──> studies
+ *
+ * Physics: d3-force. The force simulation owns ALL node movement:
+ *   - forceLink        — pulls linked nodes together (straight 1px edges)
+ *   - forceManyBody    — global repulsion so clusters don't collapse
+ *   - forceCollide     — keeps node circles from overlapping
+ *   - forceCenter      — keeps the whole graph centered in the SVG
+ *
+ * Rendering: a self-contained SVG (<viewBox>, <defs> arrows, <g> for links
+ * and nodes). Node click → router.push(article editor | study page).
+ *
+ * Data: loaded client-side via the @supabase/ssr browser client so RLS
+ * filters every row to auth.uid() = user_id (the same pattern as /articles
+ * and StudyReferences).
+ */
+export default function EvidenceGraph() {
+  const router = useRouter();
+
+  const [userId, setUserId] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [graph, setGraph] = useState<GraphData | null>(null);
+
+  // Simulation instance persists across renders; only re-created when the
+  // loaded graph changes (or the auth user changes).
+  const simulationRef = useRef<Simulation<GraphNode, GraphLink> | null>(null);
+
+  /** Query the user's own ARTICLES → CLAIMS → EVIDENCE_LINKS → STUDIES. */
+  const loadGraph = useCallback(async () => {
+    if (!userId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+
+      // 1) The user's articles.
+      const { data: articleRows, error: articleError } = await supabase
+        .from("articles")
+        .select("id, title, updated_at")
+        .order("updated_at", { ascending: false });
+      if (articleError) throw articleError;
+
+      // 2) Claims for those articles.
+      const articleIds = (articleRows ?? []).map((a) => a.id as string);
+      const { data: claimRows, error: claimError } =
+        articleIds.length > 0
+          ? await supabase
+              .from("claims")
+              .select("id, article_id, text, created_at")
+              .in("article_id", articleIds)
+              .order("created_at", { ascending: true })
+          : { data: [], error: null };
+      if (claimError) throw claimError;
+
+      // 3) Evidence links (+ the linked studies, which are public-read).
+      const claimIds = (claimRows ?? []).map((c) => c.id as string);
+      const { data: linkRows, error: linkError } =
+        claimIds.length > 0
+          ? await supabase
+              .from("evidence_links")
+              .select(
+                "id, relationship, claim_id, studies(id, pmid, title, journal)"
+              )
+              .in("claim_id", claimIds)
+          : { data: [], error: null };
+      if (linkError) throw linkError;
+
+      // ---- Build the graph data structure ----
+
+      type LinkRow = {
+        id: string;
+        relationship: EvidenceRelationship;
+        claim_id: string;
+        studies: {
+          id: string;
+          pmid: string;
+          title: string;
+          journal: string | null;
+        } | null;
+      };
+
+      const rawLinks = (linkRows ?? []) as LinkRow[];
+      const studyById = new Map<string, LinkRow["studies"] & object>();
+
+      for (const row of rawLinks) {
+        if (row.studies) {
+          studyById.set(row.studies.id, row.studies);
+        }
+      }
+
+      const nodes: GraphNode[] = [];
+      const links: GraphLink[] = [];
+      const nodeById = new Map<string, GraphNode>();
+
+      const addNode = (node: GraphNode) => {
+        nodeById.set(node.id, node);
+        nodes.push(node);
+      };
+
+      // Articles (large violet circles, banded to the top region).
+      const articleRowsTyped = (articleRows ?? []) as {
+        id: string;
+        title: string;
+        updated_at: string;
+      }[];
+      articleRowsTyped.forEach((article, i) => {
+        const title = article.title || "Untitled article";
+        addNode({
+          id: article.id,
+          type: "article",
+          label: truncate(title, 28),
+          fullLabel: `Article: ${title}`,
+          href: `/articles/${article.id}`,
+          radius: 30,
+          fill: "#7c3aed", // violet-600
+          textFill: "#ffffff",
+          // Banded start position (d3-force takes over immediately).
+          x: 80 + (i % 5) * 220,
+          y: 90 + Math.floor(i / 5) * 70,
+        });
+      });
+
+      // Claims (small dark circles, banded near their article's x).
+      const claimRowsTyped = (claimRows ?? []) as {
+        id: string;
+        article_id: string;
+        text: string;
+        created_at: string;
+      }[];
+      claimRowsTyped.forEach((claim) => {
+        const parent = nodeById.get(claim.article_id);
+        const text = claim.text || "Untitled claim";
+        addNode({
+          id: claim.id,
+          type: "claim",
+          label: truncate(text, 24),
+          fullLabel: `Claim: ${text}`,
+          href: `/articles/${claim.article_id}`,
+          radius: 18,
+          fill: "#1f2937", // gray-800
+          textFill: "#ffffff",
+          x: parent?.x ?? WIDTH / 2,
+          y: 260 + Math.random() * 120,
+        });
+      });
+
+      // Studies (medium blue circles, banded to the bottom region).
+      for (const study of studyById.values()) {
+        addNode({
+          id: study.id,
+          type: "study",
+          label: truncate(study.title, 26),
+          fullLabel: `Study (PMID ${study.pmid}): ${study.title}`,
+          href: `/study/${study.pmid}`,
+          radius: 22,
+          fill: "#2563eb", // blue-600
+          textFill: "#ffffff",
+          x: 80 + (nodes.length % 6) * 180,
+          y: 580,
+        });
+      }
+
+      // Membership edges: article → claim (1px #d1d5db, no arrow).
+      for (const claim of claimRowsTyped) {
+        links.push({
+          id: `membership:${claim.id}`,
+          kind: "membership",
+          color: "#d1d5db",
+          source: claim.article_id,
+          target: claim.id,
+        });
+      }
+
+      // Evidence edges: claim → study, colored by relationship (arrows).
+      for (const row of rawLinks) {
+        links.push({
+          id: `evidence:${row.id}`,
+          kind: "evidence",
+          relationship: row.relationship,
+          color: RELATIONSHIP_HEX[row.relationship],
+          source: row.claim_id,
+          target: row.studies?.id ?? row.claim_id,
+        });
+      }
+
+      setGraph({
+        nodes,
+        links,
+        counts: {
+          articles: nodeById.size ? articleRowsTyped.length : 0,
+          claims: claimRowsTyped.length,
+          studies: studyById.size,
+          links: rawLinks.length,
+        },
+      });
+    } catch (err) {
+      console.error("Evidence graph load failed:", err);
+      setError(err instanceof Error ? err.message : "Failed to load graph");
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
+
+  // 1) Resolve the session once.
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    supabase.auth
+      .getUser()
+      .then(({ data }) => {
+        if (cancelled) return;
+        setUserId(data.user?.id ?? null);
+        setAuthLoading(false);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setUserId(null);
+          setAuthLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 2) Load the graph once the user is known.
+  useEffect(() => {
+    if (userId) loadGraph();
+  }, [userId, loadGraph]);
+
+  // Force a re-render on every simulation tick (positions are mutated in place).
+  const [, setTick] = useState(0);
+
+  // 3) Run the d3-force simulation whenever the graph is (re)loaded.
+  useEffect(() => {
+    if (!graph || graph.nodes.length === 0) return;
+
+    // Clean up any previous simulation.
+    simulationRef.current?.stop();
+
+    const simulation = forceSimulation(graph.nodes as GraphNode[])
+      .force(
+        "link",
+        forceLink(graph.links as GraphLink[])
+          .id((d) => (d as GraphNode).id)
+          .distance((link) => {
+            const l = link as GraphLink;
+            return l.kind === "membership" ? 70 : 130;
+          })
+          .strength((link) => {
+            const l = link as GraphLink;
+            return l.kind === "membership" ? 0.7 : 0.35;
+          })
+      )
+      .force("charge", forceManyBody<GraphNode>().strength(-520))
+      .force(
+        "collide",
+        forceCollide<GraphNode>()
+          .radius((d) => d.radius + 26)
+          .iterations(2)
+      )
+      .force("center", forceCenter(WIDTH / 2, HEIGHT / 2))
+      .on("tick", () => {
+        // Re-render by letting React read the mutated node/link positions.
+        setTick((t) => t + 1);
+      });
+
+    simulationRef.current = simulation;
+
+    // Optional: settle near-stable after a while to save CPU.
+    const settleTimer = window.setTimeout(() => {
+      simulation.alphaTarget(0).stop();
+    }, 12000);
+
+    return () => {
+      window.clearTimeout(settleTimer);
+      simulation.stop();
+      simulationRef.current = null;
+    };
+  }, [graph]);
+
+  const handleSignIn = useCallback(async () => {
+    const supabase = createClient();
+    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+      window.location.pathname
+    )}`;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "github",
+      options: { redirectTo },
+    });
+    if (error) console.error("Sign-in failed:", error.message);
+  }, []);
+
+  // ---- Unauthenticated ----
+  if (!authLoading && !userId) {
+    return (
+      <div className="p-12 rounded-xl border border-dashed border-gray-300 bg-white text-center">
+        <p className="text-lg font-semibold text-gray-700 mb-2">
+          Log in to view your evidence graph
+        </p>
+        <p className="text-sm text-gray-500 mb-6 max-w-md mx-auto">
+          Visualize how your articles, claims, and saved studies connect — with
+          supports, contradicts, mixed, and contextual relationships as colored
+          edges.
+        </p>
+        <button
+          onClick={handleSignIn}
+          className="bg-gray-900 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-gray-700 transition-colors"
+        >
+          Sign in with GitHub
+        </button>
+      </div>
+    );
+  }
+
+  // ---- Auth loading ----
+  if (authLoading) {
+    return (
+      <div className="space-y-4">
+        {[0, 1, 2].map((i) => (
+          <div
+            key={i}
+            className="p-6 rounded-xl border border-gray-200 bg-white animate-pulse"
+          >
+            <div className="h-4 w-1/2 bg-gray-200 rounded mb-3" />
+            <div className="h-3 w-3/4 bg-gray-100 rounded" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // ---- Empty state ----
+  if (!loading && graph && graph.nodes.length === 0) {
+    return (
+      <div className="border border-dashed border-gray-300 bg-white rounded-xl p-12 text-center">
+        <p className="text-lg font-semibold text-gray-700 mb-2">
+          No evidence graph yet
+        </p>
+        <p className="text-sm text-gray-500 mb-6">
+          Write an article, add a claim, and link it to a study. Your graph
+          appears here automatically.
+        </p>
+        <Link
+          href="/articles"
+          className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+        >
+          Go to My Articles →
+        </Link>
+      </div>
+    );
+  }
+
+  // ---- Ready: render the SVG ----
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      {error && (
+        <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
+      {graph && graph.nodes.length > 0 && (
+        <>
+          {/* Legend */}
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3">
+            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              Legend
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-gray-600">
+              <span className="inline-block w-3 h-3 rounded-full bg-violet-600" />
+              Article
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-gray-600">
+              <span className="inline-block w-3 h-3 rounded-full bg-gray-800" />
+              Claim
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-gray-600">
+              <span className="inline-block w-3 h-3 rounded-full bg-blue-600" />
+              Study
+            </span>
+            {(Object.keys(RELATIONSHIP_LABELS) as EvidenceRelationship[]).map(
+              (r) => (
+                <span
+                  key={r}
+                  className="flex items-center gap-1.5 text-xs text-gray-600"
+                >
+                  <span
+                    className="inline-block w-4"
+                    style={{ borderTop: `3px solid ${RELATIONSHIP_HEX[r]}` }}
+                  />
+                  {RELATIONSHIP_LABELS[r]}
+                </span>
+              )
+            )}
+            <span className="ml-auto text-xs text-gray-400">
+              {graph.counts.articles} article
+              {graph.counts.articles === 1 ? "" : "s"} ·{" "}
+              {graph.counts.claims} claim
+              {graph.counts.claims === 1 ? "" : "s"} ·{" "}
+              {graph.counts.studies} study
+              {graph.counts.studies === 1 ? "" : "s"} ·{" "}
+              {graph.counts.links} link
+              {graph.counts.links === 1 ? "" : "s"}
+            </span>
+          </div>
+
+          <svg
+            viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+            className="w-full h-auto border border-gray-200 rounded-lg bg-gray-50 select-none"
+            role="img"
+            aria-label="Interactive evidence graph: articles, claims, and studies connected by relationship-colored edges"
+          >
+            <defs>
+              {/* Arrowhead for evidence edges (claim → study). */}
+              <marker
+                id="arrow"
+                viewBox="0 0 10 10"
+                refX="9"
+                refY="5"
+                markerWidth="7"
+                markerHeight="7"
+                orient="auto-start-reverse"
+              >
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#6b7280" />
+              </marker>
+            </defs>
+
+            {/* Edges */}
+            <g>
+              {graph.links.map((link) => {
+                const s = link.source as GraphNode;
+                const t = link.target as GraphNode;
+                if (!s?.x || !t?.x) return null;
+                const isEvidence = link.kind === "evidence";
+                return (
+                  <line
+                    key={link.id}
+                    x1={s.x}
+                    y1={s.y}
+                    x2={t.x}
+                    y2={t.y}
+                    stroke={link.color}
+                    strokeWidth={isEvidence ? 2.5 : 1.5}
+                    strokeOpacity={isEvidence ? 1 : 0.45}
+                    markerEnd={isEvidence ? "url(#arrow)" : undefined}
+                    className="pointer-events-none"
+                  />
+                );
+              })}
+            </g>
+
+            {/* Nodes */}
+            <g>
+              {graph.nodes.map((node) => (
+                <g
+                  key={node.id}
+                  transform={`translate(${node.x ?? 0}, ${node.y ?? 0})`}
+                  className="cursor-pointer"
+                  onClick={() => router.push(node.href)}
+                >
+                  <title>{node.fullLabel}</title>
+                  <circle
+                    r={node.radius}
+                    fill={node.fill}
+                    stroke="#ffffff"
+                    strokeWidth={2}
+                    className="hover:opacity-80 transition-opacity"
+                  />
+                  <text
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill={node.textFill}
+                    fontSize={node.type === "article" ? 11 : 9.5}
+                    fontWeight={600}
+                    pointerEvents="none"
+                    className="select-none"
+                    style={{ userSelect: "none" }}
+                  >
+                    {node.label}
+                  </text>
+                </g>
+              ))}
+            </g>
+          </svg>
+
+          <p className="mt-3 text-xs text-gray-400">
+            Click any node to open its article editor or study page. Positions
+            are computed live by d3-force.
+          </p>
+        </>
+      )}
+    </div>
+  );
+}

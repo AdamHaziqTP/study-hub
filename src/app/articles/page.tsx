@@ -21,6 +21,12 @@ export default function ArticlesPage() {
           <div className="flex items-center gap-4">
             <AuthStatus />
             <Link
+              href="/graph"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+            >
+              Evidence Graph →
+            </Link>
+            <Link
               href="/"
               className="text-sm font-medium text-blue-600 hover:text-blue-800"
             >
