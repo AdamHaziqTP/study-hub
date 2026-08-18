@@ -48,7 +48,15 @@ It is **not** a prettier PubMed, an AI fact-checker, or a social network. It is 
 
    The Supabase URL/anon key come from Supabase → Project Settings → API. The DeepSeek key comes from platform.deepseek.com.
 
-3. **Apply the database schema** — open `sql/schema.sql` in the Supabase SQL Editor and run it once. It creates all tables, RLS policies, and indexes. (`sql/schema.sql` is the single source of truth.)
+3. **Apply the database schema** — open `sql/schema.sql` in the Supabase SQL Editor and run it once. It creates all tables, RLS policies, indexes, and the explicit table `GRANT`s. (`sql/schema.sql` is the single source of truth.)
+   > **Gotcha (Task 12):** tables created purely by raw SQL get **no** default table grants on Supabase — RLS policies alone are not enough (Postgres enforces table privileges *before* RLS). The schema now includes the explicit `GRANT ... TO anon, authenticated` statements. If you already applied an older version of this schema to a live database, re-run just this block once:
+   > ```sql
+   > GRANT SELECT, INSERT ON public.studies TO anon, authenticated;
+   > GRANT SELECT, INSERT, UPDATE ON public.study_context TO anon, authenticated;
+   > GRANT SELECT, INSERT, DELETE ON public.study_identified_limitations TO anon, authenticated;
+   > GRANT SELECT, INSERT, UPDATE ON public.study_simplifications TO anon, authenticated;
+   > GRANT SELECT, INSERT, UPDATE ON public.study_assessments TO anon, authenticated;
+   > ```
 
 4. **Enable GitHub OAuth**
 
