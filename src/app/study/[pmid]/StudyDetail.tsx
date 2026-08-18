@@ -8,6 +8,9 @@ import type { StudyContext } from "@/lib/ai";
 interface StudyDetailProps {
   study: PubMedStudy;
   source: "saved" | "live";
+  /** Previously-generated context loaded from the DB (null when none exists). */
+  savedContext?: StudyContext | null;
+  savedSourceInfo?: string | null;
 }
 
 type ContextState = "idle" | "loading" | "done" | "error";
@@ -16,22 +19,34 @@ type ContextState = "idle" | "loading" | "done" | "error";
  * StudyDetail — the core Explorer page.
  *
  * Product principle (per the project spec):
- *   1. The raw source (abstract) is always shown — the AI is an interpreter,
- *      never the source.
+ *   1. The raw source (abstract/full text) is always shown first — the AI is
+ *      an interpreter, never the source.
  *   2. Source facts, AI interpretation, and practical implications stay
  *      visually and structurally distinct.
- *   3. Structured sections are rendered here; they are populated by the AI
- *      extraction pipeline in a later phase.
+ *   3. The AI-extracted breakdown is generated on demand, persisted to the
+ *      regenerable `study_context` table, and re-loaded from the DB on
+ *      revisit (DB-first; no AI call needed if it exists).
  */
-export default function StudyDetail({ study, source }: StudyDetailProps) {
+export default function StudyDetail({
+  study,
+  source,
+  savedContext = null,
+  savedSourceInfo = null,
+}: StudyDetailProps) {
   const [saving, setSaving] = useState(false);
   const [saveState, setSaveState] = useState<"idle" | "saved" | "error">("idle");
 
-  // Study breakdown (AI extraction) state — display only, no DB write yet.
-  const [contextState, setContextState] = useState<ContextState>("idle");
-  const [context, setContext] = useState<StudyContext | null>(null);
-  const [sourceInfo, setSourceInfo] = useState<string | null>(null);
+  // Study breakdown (AI extraction) state.
+  // If a saved context exists in the DB we render it immediately (DB-first,
+  // no AI call on revisit); otherwise the user can generate one.
+  const [contextState, setContextState] = useState<ContextState>(
+    savedContext ? "done" : "idle"
+  );
+  const [context, setContext] = useState<StudyContext | null>(savedContext);
+  const [sourceInfo, setSourceInfo] = useState<string | null>(savedSourceInfo);
   const [contextError, setContextError] = useState<string | null>(null);
+  const [savingContext, setSavingContext] = useState(false);
+  const [contextSaveError, setContextSaveError] = useState<string | null>(null);
 
   const handleSave = async () => {
     setSaving(true);
@@ -52,14 +67,15 @@ export default function StudyDetail({ study, source }: StudyDetailProps) {
   };
 
   /**
-   * Generate the AI-extracted breakdown for this study by calling the
-   * existing /api/extract-context test endpoint. The response contains the
-   * validated StudyContext plus sourceInfo (full_text / abstract_only /
-   * provided_text). Intentional: no DB write in this phase.
+   * Generate the AI-extracted context for this study: call the extraction
+   * pipeline (/api/extract-context), then persist the validated result into
+   * the regenerable study_context table (/api/save-context). Persistence
+   * failure is surfaced but does NOT hide the freshly generated context.
    */
-  const handleGenerateBreakdown = async () => {
+  const handleGenerateContext = async () => {
     setContextState("loading");
     setContextError(null);
+    setContextSaveError(null);
     try {
       const res = await fetch("/api/extract-context", {
         method: "POST",
@@ -71,9 +87,36 @@ export default function StudyDetail({ study, source }: StudyDetailProps) {
         throw new Error(json.error ?? "Extraction failed");
       }
       const json = await res.json();
-      setContext(json.context as StudyContext);
-      setSourceInfo(json.sourceInfo as string);
+      const newContext = json.context as StudyContext;
+      const newSourceInfo = json.sourceInfo as string;
+
+      setContext(newContext);
+      setSourceInfo(newSourceInfo);
       setContextState("done");
+
+      // Persist into the regenerable study_context table.
+      setSavingContext(true);
+      try {
+        const saveRes = await fetch("/api/save-context", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            study,
+            context: newContext,
+            sourceInfo: newSourceInfo,
+          }),
+        });
+        if (!saveRes.ok) {
+          const saveJson = await saveRes.json().catch(() => ({}));
+          throw new Error(saveJson.error ?? "Save failed");
+        }
+      } catch (saveErr) {
+        setContextSaveError(
+          saveErr instanceof Error ? saveErr.message : "Failed to persist context"
+        );
+      } finally {
+        setSavingContext(false);
+      }
     } catch (err) {
       setContextState("error");
       setContextError(err instanceof Error ? err.message : "Extraction failed");
@@ -140,7 +183,7 @@ export default function StudyDetail({ study, source }: StudyDetailProps) {
         {/* ============ RAW SOURCE ============ */}
         <section className="mb-10">
           <h2 className="text-lg font-bold mb-3 pb-2 border-b border-gray-200">
-            What the study actually says (abstract)
+            What the study actually says
           </h2>
           <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-line">
             {study.abstract}
@@ -153,22 +196,51 @@ export default function StudyDetail({ study, source }: StudyDetailProps) {
             <h2 className="text-lg font-bold">Study breakdown</h2>
             <div className="flex items-center gap-3">
               {sourceInfo && <SourceInfoBadge sourceInfo={sourceInfo} />}
-              {contextState !== "done" && (
-                <button
-                  onClick={handleGenerateBreakdown}
-                  disabled={contextState === "loading"}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors text-sm"
-                >
-                  {contextState === "loading" ? "Extracting…" : "Generate Study Breakdown"}
-                </button>
-              )}
+              <button
+                onClick={handleGenerateContext}
+                disabled={contextState === "loading" || savingContext}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50 transition-colors text-sm"
+              >
+                {contextState === "loading"
+                  ? "Extracting…"
+                  : savingContext
+                    ? "Saving context…"
+                    : savedContext
+                      ? "Regenerate context"
+                      : "Generate context"}
+              </button>
             </div>
           </div>
 
           {contextState === "error" && (
             <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
-              Failed to generate the breakdown.
+              Failed to generate the context.
               {contextError ? ` ${contextError}` : ""}
+            </div>
+          )}
+
+          {contextState === "done" && contextSaveError && (
+            <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+              Context generated, but could not be saved to the library.
+              {contextSaveError ? ` ${contextSaveError}` : ""}
+            </div>
+          )}
+
+          {contextState === "loading" && (
+            <div className="space-y-4">
+              {[0, 1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="p-4 rounded-xl border border-gray-200 bg-white animate-pulse"
+                >
+                  <div className="h-3 w-32 bg-gray-200 rounded mb-3" />
+                  <div className="h-3 w-full bg-gray-100 rounded mb-1.5" />
+                  <div className="h-3 w-4/5 bg-gray-100 rounded" />
+                </div>
+              ))}
+              <p className="text-sm text-gray-500 text-center pt-1">
+                Reading the study and extracting structured information…
+              </p>
             </div>
           )}
 
@@ -236,7 +308,7 @@ export default function StudyDetail({ study, source }: StudyDetailProps) {
                 </div>
               )}
             </div>
-          ) : (
+          ) : contextState === "idle" ? (
             <div className="space-y-4">
               <BreakdownSection label="What question was the study asking?">
                 AI extraction will appear here once generated.
@@ -255,7 +327,7 @@ export default function StudyDetail({ study, source }: StudyDetailProps) {
                 grounding quotes) will appear here.
               </BreakdownSection>
             </div>
-          )}
+          ) : null}
         </section>
 
         {/* ============ EVIDENCE CONTEXT ============ */}

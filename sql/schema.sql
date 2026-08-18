@@ -46,8 +46,27 @@ CREATE TABLE IF NOT EXISTS study_context (
   outcomes TEXT,
   findings TEXT,
   limitations TEXT,
+  -- Which input the AI actually read when generating this context:
+  -- "full_text" | "abstract_only" | "provided_text"
+  source_info TEXT,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
+
+-- 3b. Study Identified Limitations (AI-derived, each grounded in a stated fact)
+--     One row per potential limitation derived by reasoning from the STATED
+--     design; `based_on` quotes the exact stated fact it derives from.
+--     Regenerated together with study_context (delete-all + reinsert).
+CREATE TABLE IF NOT EXISTS study_identified_limitations (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  study_id UUID REFERENCES study_context(study_id) ON DELETE CASCADE NOT NULL,
+  limitation TEXT NOT NULL,
+  based_on TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_study_identified_limitations_study_id
+  ON study_identified_limitations (study_id);
 
 -- 4. Study Assessments (qualitative evidence profile)
 CREATE TABLE IF NOT EXISTS study_assessments (
@@ -105,17 +124,50 @@ DROP POLICY IF EXISTS "Public insert studies" ON studies;
 CREATE POLICY "Public insert studies" ON studies
   FOR INSERT WITH CHECK (true);
 
--- === Protected tables (require authentication, added later) ============
-ALTER TABLE study_context ENABLE ROW LEVEL SECURITY;
+-- === Protected user-owned tables (require authentication, added later) ===
 ALTER TABLE study_assessments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE articles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE claims ENABLE ROW LEVEL SECURITY;
 ALTER TABLE evidence_links ENABLE ROW LEVEL SECURITY;
 
--- Derived from a shared study: read-only access mirrors public studies.
+-- === study_context = shared REGENERABLE derived library =================
+-- Unlike `studies` (immutable source), context is derived AI output that is
+-- DESIGNED to be overwritten: a prompt/model change can regenerate it without
+-- touching the source record. The public trust model is therefore
+-- SELECT + INSERT + UPDATE (the server-side /api/save-context upserts on
+-- study_id). DELETE stays locked -- a full-row upsert already replaces content
+-- wholesale, so public deletion is never needed.
+ALTER TABLE study_context ENABLE ROW LEVEL SECURITY;
+
 DROP POLICY IF EXISTS "Public read study context" ON study_context;
 CREATE POLICY "Public read study context" ON study_context
   FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Public insert study context" ON study_context;
+CREATE POLICY "Public insert study context" ON study_context
+  FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public update study context" ON study_context;
+CREATE POLICY "Public update study context" ON study_context
+  FOR UPDATE USING (true) WITH CHECK (true);
+
+-- === study_identified_limitations = shared regenerable child =============
+-- Regeneration = delete all rows for a study + reinsert the new ones, so the
+-- public trust model is SELECT + INSERT + DELETE (no UPDATE -- each row is
+-- replaced wholesale).
+ALTER TABLE study_identified_limitations ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public read study identified limitations" ON study_identified_limitations;
+CREATE POLICY "Public read study identified limitations" ON study_identified_limitations
+  FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Public insert study identified limitations" ON study_identified_limitations;
+CREATE POLICY "Public insert study identified limitations" ON study_identified_limitations
+  FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public delete study identified limitations" ON study_identified_limitations;
+CREATE POLICY "Public delete study identified limitations" ON study_identified_limitations
+  FOR DELETE USING (true);
 
 DROP POLICY IF EXISTS "Public read study assessments" ON study_assessments;
 CREATE POLICY "Public read study assessments" ON study_assessments
