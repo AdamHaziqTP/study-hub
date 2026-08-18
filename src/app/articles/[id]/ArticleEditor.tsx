@@ -21,6 +21,32 @@ interface ArticleEditorProps {
 
 type LoadState = "auth" | "loading" | "ready" | "notfound" | "error";
 
+/** Verdict from /api/assess-claim. */
+type AlignmentVerdict = "aligned" | "partially_aligned" | "unaligned";
+
+interface AlignmentResult {
+  verdict: AlignmentVerdict;
+  reasoning: string;
+}
+
+type AlignmentState =
+  | { status: "idle" }
+  | { status: "loading" }
+  | { status: "done"; result: AlignmentResult }
+  | { status: "error"; message: string };
+
+const ALIGNMENT_CHIP_STYLES: Record<AlignmentVerdict, string> = {
+  aligned: "bg-green-100 text-green-800",
+  partially_aligned: "bg-amber-100 text-amber-800",
+  unaligned: "bg-red-100 text-red-800",
+};
+
+const ALIGNMENT_LABELS: Record<AlignmentVerdict, string> = {
+  aligned: "Aligned",
+  partially_aligned: "Partially aligned",
+  unaligned: "Unaligned",
+};
+
 /**
  * ArticleEditor - the core Task 7 UI.
  *
@@ -53,6 +79,13 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+
+  // Claim alignment check (Task 9): keyed by claim.key so each claim can be
+  // assessed independently. The result is cleared whenever the claim text or
+  // its links change so a stale verdict is never shown.
+  const [alignmentByClaim, setAlignmentByClaim] = useState<
+    Record<string, AlignmentState>
+  >({});
 
   // Track what was loaded from the DB so Save can compute INSERTs/UPDATEs/DELETEs.
   const initialClaims = useRef<{ id: string; text: string }[]>([]);
@@ -264,10 +297,26 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
     patchClaims((claims) =>
       claims.map((c) => (c.key === key ? { ...c, text } : c))
     );
+    // The claim text changed — a previously computed alignment verdict is stale.
+    setAlignmentByClaim((map) => {
+      if (!map[key]) return map;
+      const next = { ...map };
+      delete next[key];
+      return next;
+    });
   };
 
   const removeClaim = (key: string) => {
     patchClaims((claims) => claims.filter((c) => c.key !== key));
+  };
+
+  const clearAlignment = (claimKey: string) => {
+    setAlignmentByClaim((map) => {
+      if (!map[claimKey]) return map;
+      const next = { ...map };
+      delete next[claimKey];
+      return next;
+    });
   };
 
   const addLink = (claimKey: string, study: LinkableStudy) => {
@@ -287,6 +336,8 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
         return { ...c, links: [...c.links, link] };
       })
     );
+    // The linked studies changed — a previously computed verdict is stale.
+    clearAlignment(claimKey);
   };
 
   const updateLinkRelationship = (
@@ -306,6 +357,8 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
           : c
       )
     );
+    // The relationship affects interpretation — clear the stale verdict.
+    clearAlignment(claimKey);
   };
 
   const removeLink = (claimKey: string, linkKey: string) => {
@@ -316,6 +369,56 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
           : c
       )
     );
+    // The linked studies changed — clear the stale verdict.
+    clearAlignment(claimKey);
+  };
+
+  /**
+   * Run the claim alignment check (Task 9): POST the claim text + its linked
+   * study ids to /api/assess-claim, which resolves the studies' abstracts
+   * (server-side) and returns an aligned / partially_aligned / unaligned
+   * verdict with reasoning. Requires at least one linked study.
+   */
+  const handleAssessClaim = async (claim: DraftClaim) => {
+    if (!claim.text.trim()) return;
+    if (claim.links.length === 0) return;
+
+    setAlignmentByClaim((map) => ({
+      ...map,
+      [claim.key]: { status: "loading" },
+    }));
+
+    try {
+      const res = await fetch("/api/assess-claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          claimText: claim.text,
+          studyIds: claim.links.map((l) => l.studyId),
+        }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error ?? "Assessment failed");
+      }
+      const json = await res.json();
+      const result: AlignmentResult = {
+        verdict: json.verdict,
+        reasoning: json.reasoning,
+      };
+      setAlignmentByClaim((map) => ({
+        ...map,
+        [claim.key]: { status: "done", result },
+      }));
+    } catch (err) {
+      setAlignmentByClaim((map) => ({
+        ...map,
+        [claim.key]: {
+          status: "error",
+          message: err instanceof Error ? err.message : "Assessment failed",
+        },
+      }));
+    }
   };
 
   // ---- Save ----
@@ -637,6 +740,65 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
                     placeholder="e.g. Overhead triceps extensions produce greater long-head hypertrophy than neutral-position extensions."
                     className="w-full border border-gray-300 bg-white rounded-lg p-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y mb-4"
                   />
+
+                  {/* Alignment check (Task 9) */}
+                  <div className="mb-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-semibold text-gray-500">
+                        Claim alignment
+                      </p>
+                      <button
+                        onClick={() => handleAssessClaim(claim)}
+                        disabled={
+                          !claim.text.trim() ||
+                          claim.links.length === 0 ||
+                          alignmentByClaim[claim.key]?.status === "loading"
+                        }
+                        title={
+                          claim.links.length === 0
+                            ? "Link at least one study to check alignment"
+                            : "Check whether this claim accurately represents its linked studies"
+                        }
+                        className="text-xs font-semibold border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {alignmentByClaim[claim.key]?.status === "loading"
+                          ? "Checking..."
+                          : alignmentByClaim[claim.key]?.status === "done"
+                            ? "Re-check alignment"
+                            : "Check alignment"}
+                      </button>
+                    </div>
+
+                    {alignmentByClaim[claim.key]?.status === "error" &&
+                      (() => {
+                        const state = alignmentByClaim[claim.key];
+                        if (state.status !== "error") return null;
+                        return (
+                          <div className="mt-2 p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
+                            Failed to check alignment.
+                            {state.message ? ` ${state.message}` : ""}
+                          </div>
+                        );
+                      })()}
+
+                    {alignmentByClaim[claim.key]?.status === "done" &&
+                      (() => {
+                        const state = alignmentByClaim[claim.key];
+                        if (state.status !== "done") return null;
+                        return (
+                          <div className="mt-2 space-y-1.5">
+                            <span
+                              className={`inline-block text-xs font-semibold px-3 py-1 rounded-full ${ALIGNMENT_CHIP_STYLES[state.result.verdict]}`}
+                            >
+                              {ALIGNMENT_LABELS[state.result.verdict]}
+                            </span>
+                            <p className="text-xs text-gray-600 leading-relaxed">
+                              {state.result.reasoning}
+                            </p>
+                          </div>
+                        );
+                      })()}
+                  </div>
 
                   {/* Evidence links for this claim */}
                   <div className="mb-3">

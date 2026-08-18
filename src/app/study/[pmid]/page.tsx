@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase";
 import { fetchPubMedStudyById, type PubMedStudy } from "@/lib/pubmed";
 import { notFound } from "next/navigation";
 import StudyDetail from "./StudyDetail";
-import type { StudyContext } from "@/lib/ai";
+import type { StudyContext, StudySimplification } from "@/lib/ai";
 
 interface PageProps {
   params: Promise<{ pmid: string }>;
@@ -81,6 +81,24 @@ export default async function StudyPage({ params }: PageProps) {
       savedSourceInfo = contextRow.source_info ?? null;
     }
 
+    // Load any previously-generated plain-English simplification (DB-first,
+    // same regenerable pattern as study_context).
+    const { data: simplificationRow } = await supabase
+      .from("study_simplifications")
+      .select("*")
+      .eq("study_id", saved.id)
+      .maybeSingle();
+
+    let savedSimplification: StudySimplification | null = null;
+    let savedSimplificationSourceInfo: string | null = null;
+
+    if (simplificationRow?.simplified_text) {
+      savedSimplification = {
+        simplified_text: simplificationRow.simplified_text,
+      };
+      savedSimplificationSourceInfo = simplificationRow.source_info ?? null;
+    }
+
     return (
       <StudyDetail
         study={study}
@@ -88,6 +106,8 @@ export default async function StudyPage({ params }: PageProps) {
         studyId={saved.id}
         savedContext={savedContext}
         savedSourceInfo={savedSourceInfo}
+        savedSimplification={savedSimplification}
+        savedSimplificationSourceInfo={savedSimplificationSourceInfo}
       />
     );
   }

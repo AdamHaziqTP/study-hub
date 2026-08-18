@@ -69,7 +69,19 @@ CREATE TABLE IF NOT EXISTS study_identified_limitations (
 CREATE INDEX IF NOT EXISTS idx_study_identified_limitations_study_id
   ON study_identified_limitations (study_id);
 
--- 3c. Study Notes (user-owned personal notes — PRIVATE, RLS-locked)
+-- 3c. Study Simplifications (AI plain-English re-explanation — regenerable)
+--     Job 2 ("Explain"): a plain-English pass over the abstract for a curious
+--     lifter. Same trust model as study_context — derived AI output designed
+--     to be wiped + regenerated, keyed 1:1 by study_id. `source_info` records
+--     what the AI actually read ("full_text" | "abstract_only" | "provided_text").
+CREATE TABLE IF NOT EXISTS study_simplifications (
+  study_id UUID REFERENCES studies(id) ON DELETE CASCADE PRIMARY KEY,
+  simplified_text TEXT NOT NULL,
+  source_info TEXT,
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
+);
+
+-- 3d. Study Notes (user-owned personal notes — PRIVATE, RLS-locked)
 --     One consolidated note per (user, study). The user_id column defaults to
 --     auth.uid() so the database fills it from the caller's JWT — the client
 --     NEVER sends user_id, making it impossible to write a row on behalf of
@@ -260,6 +272,24 @@ CREATE POLICY "Public insert study identified limitations" ON study_identified_l
 DROP POLICY IF EXISTS "Public delete study identified limitations" ON study_identified_limitations;
 CREATE POLICY "Public delete study identified limitations" ON study_identified_limitations
   FOR DELETE USING (true);
+
+-- === study_simplifications = shared REGENERABLE derived library =========
+-- Job 2 ("Explain") plain-English pass. Same trust model as study_context:
+-- SELECT + INSERT + UPDATE (the server-side save-simplification upserts on
+-- study_id). DELETE stays locked -- a full-row upsert replaces content.
+ALTER TABLE study_simplifications ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public read study simplifications" ON study_simplifications;
+CREATE POLICY "Public read study simplifications" ON study_simplifications
+  FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Public insert study simplifications" ON study_simplifications;
+CREATE POLICY "Public insert study simplifications" ON study_simplifications
+  FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public update study simplifications" ON study_simplifications;
+CREATE POLICY "Public update study simplifications" ON study_simplifications
+  FOR UPDATE USING (true) WITH CHECK (true);
 
 -- === study_notes = PRIVATE user-owned notes ============================
 -- The ONLY table so far that locks rows strictly to the authenticated user

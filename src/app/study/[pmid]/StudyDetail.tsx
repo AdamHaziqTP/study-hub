@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import AuthStatus from "@/components/AuthStatus";
 import StudyReferences from "@/components/StudyReferences";
 import type { PubMedStudy } from "@/lib/pubmed";
-import type { StudyContext } from "@/lib/ai";
+import type { StudyContext, StudySimplification } from "@/lib/ai";
 import PersonalNotes from "./PersonalNotes";
 
 interface StudyDetailProps {
@@ -17,6 +17,9 @@ interface StudyDetailProps {
   /** Previously-generated context loaded from the DB (null when none exists). */
   savedContext?: StudyContext | null;
   savedSourceInfo?: string | null;
+  /** Previously-generated plain-English simplification (null when none exists). */
+  savedSimplification?: StudySimplification | null;
+  savedSimplificationSourceInfo?: string | null;
 }
 
 type ContextState = "idle" | "loading" | "done" | "error";
@@ -41,6 +44,8 @@ export default function StudyDetail({
   studyId = null,
   savedContext = null,
   savedSourceInfo = null,
+  savedSimplification = null,
+  savedSimplificationSourceInfo = null,
 }: StudyDetailProps) {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
@@ -57,6 +62,26 @@ export default function StudyDetail({
   const [contextError, setContextError] = useState<string | null>(null);
   const [savingContext, setSavingContext] = useState(false);
   const [contextSaveError, setContextSaveError] = useState<string | null>(null);
+
+  // Plain-English simplification (Job 2) state — same regenerable pattern as
+  // the study breakdown: rendered immediately when saved in the DB, otherwise
+  // generated on demand and persisted to `study_simplifications`.
+  const [simplificationState, setSimplificationState] = useState<ContextState>(
+    savedSimplification ? "done" : "idle"
+  );
+  const [simplification, setSimplification] = useState<StudySimplification | null>(
+    savedSimplification
+  );
+  const [simplificationSourceInfo, setSimplificationSourceInfo] = useState<
+    string | null
+  >(savedSimplificationSourceInfo);
+  const [simplificationError, setSimplificationError] = useState<string | null>(
+    null
+  );
+  const [savingSimplification, setSavingSimplification] = useState(false);
+  const [simplificationSaveError, setSimplificationSaveError] = useState<
+    string | null
+  >(null);
 
   const handleSave = async () => {
     setSaving(true);
@@ -80,11 +105,66 @@ export default function StudyDetail({
   };
 
   /**
-   * Generate the AI-extracted context for this study: call the extraction
-   * pipeline (/api/extract-context), then persist the validated result into
-   * the regenerable study_context table (/api/save-context). Persistence
-   * failure is surfaced but does NOT hide the freshly generated context.
+   * Generate the plain-English simplification (Job 2): call /api/simplify-study,
+   * then persist the validated result into the regenerable study_simplifications
+   * table (/api/save-simplification). Persistence failure is surfaced but does
+   * NOT hide the freshly generated text.
    */
+  const handleGenerateSimplification = async () => {
+    setSimplificationState("loading");
+    setSimplificationError(null);
+    setSimplificationSaveError(null);
+    try {
+      const res = await fetch("/api/simplify-study", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pmid: study.pmid }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error ?? "Simplification failed");
+      }
+      const json = await res.json();
+      const newSimplification = json.simplification as StudySimplification;
+      const newSourceInfo = json.sourceInfo as string;
+
+      setSimplification(newSimplification);
+      setSimplificationSourceInfo(newSourceInfo);
+      setSimplificationState("done");
+
+      // Persist into the regenerable study_simplifications table.
+      setSavingSimplification(true);
+      try {
+        const saveRes = await fetch("/api/save-simplification", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            study,
+            simplification: newSimplification,
+            sourceInfo: newSourceInfo,
+          }),
+        });
+        if (!saveRes.ok) {
+          const saveJson = await saveRes.json().catch(() => ({}));
+          throw new Error(saveJson.error ?? "Save failed");
+        }
+      } catch (saveErr) {
+        setSimplificationSaveError(
+          saveErr instanceof Error
+            ? saveErr.message
+            : "Failed to persist simplification"
+        );
+      } finally {
+        setSavingSimplification(false);
+      }
+    } catch (err) {
+      setSimplificationState("error");
+      setSimplificationError(
+        err instanceof Error ? err.message : "Simplification failed"
+      );
+    }
+  };
+
   const handleGenerateContext = async () => {
     setContextState("loading");
     setContextError(null);
@@ -204,6 +284,73 @@ export default function StudyDetail({
           <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-line">
             {study.abstract}
           </p>
+        </section>
+
+        {/* ============ PLAIN-ENGLISH EXPLANATION (Job 2) ============ */}
+        <section className="mb-10">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-2 border-b border-gray-200">
+            <h2 className="text-lg font-bold">In plain English</h2>
+            <div className="flex items-center gap-3">
+              {simplificationSourceInfo && (
+                <SourceInfoBadge sourceInfo={simplificationSourceInfo} />
+              )}
+              <button
+                onClick={handleGenerateSimplification}
+                disabled={simplificationState === "loading" || savingSimplification}
+                className="bg-emerald-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-emerald-700 disabled:opacity-50 transition-colors text-sm"
+              >
+                {simplificationState === "loading"
+                  ? "Explaining..."
+                  : savingSimplification
+                    ? "Saving..."
+                    : savedSimplification
+                      ? "Regenerate explanation"
+                      : "Generate explanation"}
+              </button>
+            </div>
+          </div>
+
+          {simplificationState === "error" && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              Failed to generate the explanation.
+              {simplificationError ? ` ${simplificationError}` : ""}
+            </div>
+          )}
+
+          {simplificationState === "done" && simplificationSaveError && (
+            <div className="mb-4 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+              Explanation generated, but could not be saved to the library.
+              {simplificationSaveError ? ` ${simplificationSaveError}` : ""}
+            </div>
+          )}
+
+          {simplificationState === "loading" && (
+            <div className="p-4 rounded-xl border border-gray-200 bg-white animate-pulse">
+              <div className="h-3 w-40 bg-gray-200 rounded mb-3" />
+              <div className="h-3 w-full bg-gray-100 rounded mb-1.5" />
+              <div className="h-3 w-full bg-gray-100 rounded mb-1.5" />
+              <div className="h-3 w-3/4 bg-gray-100 rounded" />
+              <p className="text-sm text-gray-500 text-center pt-3">
+                Re-explaining the study in plain English...
+              </p>
+            </div>
+          )}
+
+          {simplificationState === "done" && simplification ? (
+            <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50">
+              <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line">
+                {simplification.simplified_text}
+              </p>
+            </div>
+          ) : simplificationState === "idle" ? (
+            <div className="p-4 rounded-xl border border-dashed border-gray-300 bg-white">
+              <p className="text-sm text-gray-500">
+                A plain-English explanation of this study for a curious lifter —
+                what it tested, who was studied, and what the authors found —
+                will appear here.
+              </p>
+            </div>
+          ) : null}
         </section>
 
         {/* ============ STRUCTURED INTERPRETATION ============ */}
