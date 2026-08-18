@@ -88,8 +88,13 @@ CREATE TABLE IF NOT EXISTS evidence_links (
 -- Row Level Security policies
 -- ============================================================
 
--- Studies = shared public library: anyone can read, anyone can add/upsert,
--- nobody can delete via the API.
+-- Studies = shared public library: anyone can READ and INSERT, nobody can
+-- UPDATE or DELETE. The raw PubMed record is source-derived; arbitrary
+-- public users must not be able to modify existing cached studies.
+--
+-- Rationale for no public UPDATE policy:
+--   /api/save-study is INSERT-only (check-then-insert). If a study already
+--   exists, the endpoint returns a no-op success rather than overwriting it.
 ALTER TABLE studies ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Public read studies" ON studies;
@@ -99,13 +104,6 @@ CREATE POLICY "Public read studies" ON studies
 DROP POLICY IF EXISTS "Public insert studies" ON studies;
 CREATE POLICY "Public insert studies" ON studies
   FOR INSERT WITH CHECK (true);
-
--- Required for upsert (INSERT ... ON CONFLICT DO UPDATE) via anon key.
-DROP POLICY IF EXISTS "Public update studies" ON studies;
-CREATE POLICY "Public update studies" ON studies
-  FOR UPDATE USING (true) WITH CHECK (true);
-
--- NOTE: No DELETE policy for studies.
 
 -- === Protected tables (require authentication, added later) ============
 ALTER TABLE study_context ENABLE ROW LEVEL SECURITY;
