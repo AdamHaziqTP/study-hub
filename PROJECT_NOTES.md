@@ -83,7 +83,7 @@ These exist because the original idea drifted toward "AI tells you if a study is
 | Frontend + Backend | **Next.js 16 (App Router) + TypeScript** | Same language ecosystem as the Arctic Fever React Native work; one repo for frontend + API routes; one deploy. No context-switching. |
 | Database | **PostgreSQL via Supabase** | Relational fit for the evidence graph; Supabase gives auth/storage/RLS without setup overhead; free tier. |
 | External research data | **NCBI PubMed E-utilities** | The authoritative open API for biomedical literature. Two-step: `esearch` → PMIDs, then `efetch` → full XML. |
-| AI | **DeepSeek API** (planned) | Cheap structured extraction; model chosen explicitly in code (see §8). |
+| AI | **DeepSeek API** | Cheap structured extraction; model chosen explicitly in code (see §8). |
 | Hosting | **Vercel + Supabase** (planned) | Natural fits for Next.js + Postgres. |
 
 ### Why Next.js 16 matters for the code
@@ -139,7 +139,7 @@ Supabase's RLS is a per-table bouncer. Our decisions:
     CREATE POLICY "Public insert studies" ON studies FOR INSERT WITH CHECK (true);
     ```
 - **User-owned tables** (`articles`, `claims`, `evidence_links`, …) currently have RLS enabled with **no public policies** — they stay locked until authentication is implemented. `study_context` / `study_assessments` are read-only for now (they derive from a shared study).
-- **Keys:** only the Supabase **anon/public** key is exposed via `NEXT_PUBLIC_` (it's meant to be public — RLS is the real security boundary). The DeepSeek key goes into `.env.local` **without** `NEXT_PUBLIC_` so it stays server-side. `.env*` is git-ignored.
+- **Keys:** only the Supabase **anon/public** key is exposed via `NEXT_PUBLIC_` (it's meant to be public — RLS is the real security boundary). The DeepSeek key goes into `.env.local` **without** `NEXT_PUBLIC_` so it stays server-side. `.env*` is git-ignored (except `.env.example`, the committed template).
 
 ---
 
@@ -155,14 +155,14 @@ There are **two completely different costs**, easy to confuse:
 
 You saw a 43¢ bill from Cline — that was agentic coding cost (lots of context in/out), **not** the app's per-study cost. Study Hub's extraction will be one short call per study.
 
-**Model strategy (upcoming):**
-- **Cheap/flash model** → extraction + simplification (structured info from an abstract is a good use case for a cheap model).
+**Model strategy (in effect now):**
+- **Cheap model (`deepseek-chat`)** → extraction + simplification (structured info from an abstract is a good use case for a cheap model). Set as the default in `src/lib/ai.ts`; overridable via `DEEPSEEK_MODEL`.
 - **Stronger model** → reserved for claim↔evidence alignment later ("does this claim accurately represent these five studies?"), which is genuinely harder.
 - DeepSeek key: `DEEPSEEK_API_KEY=` in `.env.local` (no `NEXT_PUBLIC_` prefix).
 
 ---
 
-## 9. What has been built so far (Milestone 1 — Explorer core)
+## 9. What has been built so far
 
 All of this is **committed and pushed** to GitHub (`main`).
 
@@ -175,13 +175,16 @@ All of this is **committed and pushed** to GitHub (`main`).
 | `src/app/study/[pmid]/StudyDetail.tsx` | The study detail UI | Implements the product rules: raw abstract on top, then breakdown / evidence context / training-application placeholders, Save + PubMed buttons |
 | `src/app/page.tsx` | Search home page; cards link to `/study/[pmid]` | The entry point of the Explorer |
 | `sql/schema.sql` | Full schema + RLS policies as a checked-in file | Database is reproducible; portfolio artifact showing the data-model reasoning |
+| `src/lib/ai.ts` | Server-only DeepSeek helper: **Job-1 extraction** (title+abstract → validated `StudyContext`) | Uses the cheap model by default (`deepseek-chat`); reads `DEEPSEEK_API_KEY`/`DEEPSEEK_MODEL` server-side; validates JSON before it can reach DB/UI |
+| `src/app/api/extract-context/route.ts` | Test endpoint: `POST {pmid}` (fetches from PubMed + extracts) or `{title, abstract}` (extracts directly) | Lets us test the AI pipeline on a real study without any DB write |
+| `.env.example` | Committed template of required env vars (no secrets) | New devs/reviewers see exactly what's needed; `.env*` stays git-ignored except this file |
 
 ### The page layout that encodes the product rules (`StudyDetail.tsx`, top to bottom)
 
 1. Header (title, authors, journal, PMID)
 2. **Save to Library** + **View original on PubMed** buttons
 3. **What the study actually says** — the raw abstract, unmodified (source first)
-4. **Study breakdown** — placeholders for the AI extraction (question / population / conduct / findings / conclusion)
+4. **Study breakdown** — placeholder for the AI extraction (question / population / conduct / findings / conclusion)
 5. **Evidence context** — placeholder for the factor explanations (no credibility score)
 6. **What this might mean for training** — placeholder for cautious practical interpretation
 
@@ -195,6 +198,7 @@ All of this is **committed and pushed** to GitHub (`main`).
 - ✅ PubMed search → parse → study card UI
 - ✅ Study detail page (saved copy first, live fallback)
 - ✅ Save to Library (verified working — RLS SELECT+INSERT policies applied)
+- ✅ AI extraction pipeline (Job 1) — DeepSeek, `deepseek-chat` by default, validated output, test endpoint `/api/extract-context`
 - ✅ `tsc --noEmit` passes clean
 - ✅ Living doc (this file)
 
@@ -209,22 +213,23 @@ Why it's a good test case: it's exactly the kind of study that lacks context in 
 
 ## 11. Roadmap position & next steps
 
-We are working through a 24-phase roadmap (from the project brief). Position ≈ **end of Phase 8** (study page without AI). Priority hierarchy:
+We are working through a 24-phase roadmap (from the project brief). Position ≈ **Phase 9 started** (AI study extraction). Priority hierarchy:
 
-- 🔴 **Must work:** PubMed → Study → Study Context → Evidence Context ✅ (core flow now wired, minus AI)
+- 🔴 **Must work:** PubMed → Study → Study Context → Evidence Context ✅ (core flow wired; AI extraction now in progress)
 - 🟠 **Very important:** Notes → Articles → Claims → Evidence Links
-- 🟡 **High-value stretch:** AI extraction → AI simplification → Claim alignment
+- 🟡 **High-value stretch:** AI simplification → Claim alignment
 - 🟢 **Stretch:** evidence graph → ranked search → polish
 - ⚪ **Completely optional:** social / monetisation / mobile
 
 ### Immediate next steps (one small, testable step at a time)
 
-1. **AI extraction skeleton** — add `DEEPSEEK_API_KEY` to `.env.local`; a server-only helper that takes title+abstract → **validated** structured JSON matching `study_context` (sample size, population, duration, design, intervention, outcome, findings, limitations). Validate before touching the DB.
-2. **Populate the Study breakdown** from those extracted fields.
-3. **Library page** (`/library`) — list saved studies (Evidence Notebook starting point).
-4. **Ranked search** — relevance ordering that never hides lower-ranked results.
-5. **Notes on studies** (per-study personal notes).
-6. **Article/claim system** — consumes studies discovered through the Explorer.
+1. ✅ **AI extraction skeleton** — `src/lib/ai.ts` + `/api/extract-context` (uses `deepseek-chat`; validates JSON). **To test:** add `DEEPSEEK_API_KEY` (and optionally `DEEPSEEK_MODEL`) to `.env.local`, restart the dev server, then `POST /api/extract-context` with `{"pmid":"35819335"}`.
+2. **Populate the Study breakdown** on the detail page from the validated `StudyContext` fields (display only, no DB write yet).
+3. **Persist extracted context** — store into the regenerable `study_context` table via a "Generate context" action on the study page.
+4. **Library page** (`/library`) — list saved studies (Evidence Notebook starting point).
+5. **Ranked search** — relevance ordering that never hides lower-ranked results.
+6. **Notes on studies** (per-study personal notes).
+7. **Article/claim system** — consumes studies discovered through the Explorer.
 
 ### Workflow rule going forward
 > One small feature at a time → the plan/approach is explained first → implemented → tested → committed. No more autonomous large builds.
