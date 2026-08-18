@@ -53,6 +53,20 @@ CREATE TABLE IF NOT EXISTS study_context (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
+-- ---------------------------------------------------------------------------
+-- Migration (additive, idempotent — apply once to EXISTING deployments):
+-- CREATE TABLE IF NOT EXISTS never adds columns to a table that already
+-- exists, so databases that ran an earlier version of this schema (before
+-- `source_info` was introduced) will silently lack the column. The grants fix
+-- (Task 12) unblocked reads, which surfaced the write-path failure:
+--   /api/save-context -> 500 "Failed to save study context"
+--   PostgREST -> PGRST204 "Could not find the 'source_info' column"
+-- On a FRESH database these are no-ops (the CREATE above already includes the
+-- columns). Safe to run as part of the full schema or standalone.
+ALTER TABLE study_context ADD COLUMN IF NOT EXISTS source_info TEXT;
+ALTER TABLE study_context ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW());
+-- ---------------------------------------------------------------------------
+
 -- 3b. Study Identified Limitations (AI-derived, each grounded in a stated fact)
 --     One row per potential limitation derived by reasoning from the STATED
 --     design; `based_on` quotes the exact stated fact it derives from.

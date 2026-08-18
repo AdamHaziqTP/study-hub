@@ -57,6 +57,11 @@ It is **not** a prettier PubMed, an AI fact-checker, or a social network. It is 
    > GRANT SELECT, INSERT, UPDATE ON public.study_simplifications TO anon, authenticated;
    > GRANT SELECT, INSERT, UPDATE ON public.study_assessments TO anon, authenticated;
    > ```
+   > **Gotcha #2 (Task 12):** `CREATE TABLE IF NOT EXISTS` never **adds columns** to a table that already exists. If the database was created before the `source_info` column existed, the production `study_context` table will lack it and `/api/save-context` will fail with `PGRST204: Could not find the 'source_info' column`. The schema now includes the additive migration — run it once against any existing deployment:
+   > ```sql
+   > ALTER TABLE study_context ADD COLUMN IF NOT EXISTS source_info TEXT;
+   > ALTER TABLE study_context ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW());
+   > ```
 
 4. **Enable GitHub OAuth**
 
