@@ -37,8 +37,16 @@ export default function Home() {
     // Added min-h-screen and explicit background/text colors to override system dark mode
     <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans">
       <div className="max-w-5xl mx-auto">
-        <h1 className="text-4xl font-bold mb-8 text-gray-900">Evidence Hub</h1>
-        
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-4xl font-bold text-gray-900">Evidence Hub</h1>
+          <Link
+            href="/library"
+            className="text-sm font-medium text-blue-600 hover:text-blue-800"
+          >
+            Library →
+          </Link>
+        </div>
+
         {/* Search Bar */}
         <form onSubmit={handleSearch} className="flex gap-4 mb-10">
           <input 

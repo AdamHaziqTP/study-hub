@@ -175,6 +175,7 @@ All of this is **committed and pushed** to GitHub (`main`).
 | `src/app/study/[pmid]/page.tsx` | Server page: DB-first (loads `studies` + saved `study_context`/limitations), falls back to live PubMed | Saved context renders without an AI call on revisit; Next.js 16 `params`-as-`Promise` |
 | `src/app/study/[pmid]/StudyDetail.tsx` | Study detail UI: raw abstract on top → AI Study breakdown (fields + two-tier limitations + `sourceInfo` badge + loading skeleton + error states) → evidence context / training-application placeholders; Generate/Regenerate + Save + PubMed buttons | Encodes the product rules end-to-end |
 | `src/app/page.tsx` | Search home page; cards link to `/study/[pmid]` | The entry point of the Explorer |
+| `src/app/library/page.tsx` | Library page (`/library`): server component listing saved studies from `studies` newest-first with the home-page card markup, empty + error states, and a "Back to search" link | Task 4; public shared-library view (`studies` = shared reference library) |
 | `sql/schema.sql` | Full schema + RLS as a checked-in file (incl. `source_info` col + `study_identified_limitations` table + regenerable RLS) | Database reproducible; portfolio artifact |
 | `src/lib/ai.ts` | Server-only DeepSeek helper: `extractStudyContext(title, abstract, fullText?)` → validated `StudyContext` + `IdentifiedLimitation[]` | `deepseek-chat` default; strict JSON validation; two-tier limitations |
 | `.env.example` | Committed template of required env vars (no secrets) | `.env*` stays git-ignored except this file |
@@ -204,6 +205,7 @@ All of this is **committed and pushed** to GitHub (`main`).
 - ✅ **Study breakdown populated on the detail page** (`StudyDetail.tsx` renders validated `StudyContext` + badge + skeleton + errors; Task 2)
 - ✅ **Context persisted (Task 3)** — `/api/save-context` upserts into `study_context` (+ `study_identified_limitations` child rows); `page.tsx` loads saved context DB-first; schema updated with `source_info` + child table + regenerable RLS (SELECT+INSERT+UPDATE on study_context; SELECT+INSERT+DELETE on child)
 - ⏳ **Action required by user:** run the updated `sql/schema.sql` in Supabase (adds `source_info` column, `study_identified_limitations` table + index, and the regenerable RLS policies) so "Generate context" persistence works
+- ✅ **Library page (Task 4)** — `/library` lists saved studies from `studies` newest-first (server component, `export const dynamic = "force-dynamic"` so newly-saved studies always appear); reuses home-page card markup, links to `/study/[pmid]`, has empty + error states; Library nav link added to the home page header
 - ✅ `tsc --noEmit` passes clean
 - ✅ Living doc (this file)
 
@@ -218,7 +220,7 @@ Why it's a good test case: it's exactly the kind of study that lacks context in 
 
 ## 11. Roadmap position & next steps
 
-We are working through a 24-phase roadmap (from the project brief). Position ≈ **Phase 9 complete (extraction rendered + persisted)**. Priority hierarchy:
+We are working through a 24-phase roadmap (from the project brief). Position ≈ **Phase 10 (library view of saved studies)**. Priority hierarchy:
 
 - 🔴 **Must work:** PubMed → Study → Study Context → Evidence Context ✅ (core flow wired; extraction rendered + persisted)
 - 🟠 **Very important:** Notes → Articles → Claims → Evidence Links
@@ -231,7 +233,7 @@ We are working through a 24-phase roadmap (from the project brief). Position ≈
 1. ✅ **AI extraction skeleton** — `src/lib/ai.ts` + `/api/extract-context` (`deepseek-chat`; validates JSON; verified 35819335→abstract_only with derived limitations, 42605311→full_text).
 2. ✅ **Populate the Study breakdown** on the detail page from validated `StudyContext` (display only; `sourceInfo` badge; loading/error states).
 3. ✅ **Persist extracted context** — `/api/save-context` upserts `study_context` + child limitations; page.tsx loads DB-first. **User action:** apply updated `sql/schema.sql` in Supabase for `source_info` + child table + regenerable RLS.
-4. **Library page** (`/library`) — list saved studies from `studies`.
+4. ✅ **Library page** (`/library`) — server component lists saved studies from `studies` newest-first (`export const dynamic = "force-dynamic"`); home-page card markup reused; empty + error states; nav link on home page.
 5. **Ranked search** — relevance ordering that never hides lower-ranked results.
 6. **Notes on studies** (per-study personal notes).
 7. **Article/claim system** — consumes studies discovered through the Explorer.
@@ -266,14 +268,14 @@ This project is developed in short agent-chat sessions. A fresh agent should be 
 ### 12.2 Current task queue
 Current task:
 
-**Task 4 (do this next): Library page (`/library`) — list saved studies from the `studies` table.**
-- Reference: `src/app/page.tsx` (home search UI, study-card markup as the style guide), `src/lib/supabase.ts` (single shared client).
-- NO new RLS needed — `studies` already has public SELECT. A server component can do `.from("studies").select("*").order("created_at", { ascending: false })`.
-- Deliverable: `/library` route renders saved studies as cards (reuse the home-page card markup), each linking to `/study/[pmid]`. Show an empty state ("No saved studies yet — go search"). Add a nav link to Library from the home page.
-- This is a public shared-library view consistent with the current trust model (no auth yet).
+**Task 5 (do this next): Ranked search — relevance ordering that never hides results.**
+- Reference: `src/app/page.tsx` (the search UI — results are currently raw PubMed order), `src/lib/pubmed.ts` (`searchPubMed` returns `idlist` order from NCBI ESearch).
+- Product rule (§3): "Rank, don't filter" — results are *ordered* by relevance, never hidden. A "peripheral" study must remain visible below more-relevant ones.
+- Open design question to resolve first (explain plan before coding): how to rank without a paid/quality signal. Candidate approaches: (a) term-frequency overlap between query tokens and title/abstract; (b) NCBI's `relevance` sort option in ESearch (`sort=relevance`); (c) a hybrid. Keep it simple and defensible for an IS interview.
+- Deliverable: search on the home page returns relevance-ordered results with the ordering rationale documented; low-relevance studies still appear.
+- Reference for ranked-search research: none external needed — the raw `esearchresult` object in `src/lib/pubmed.ts` already exposes options; verify NCBI `sort=relevance` support in the E-utils `esearch` docs.
 
 Then, in order:
-5. **Ranked search** — relevance ordering that never hides results.
 6. **Notes on studies** — per-study personal notes (user-owned, needs auth).
 7. **Article/claim system** — consumes studies from the Explorer (Phase 13-15).
 8. Optional/stretch: evidence graph, AI simplification, claim alignment, polish, deploy, test, docs.
@@ -288,6 +290,7 @@ Then, in order:
 - `src/app/api/search-pubmed/route.ts` — search endpoint.
 - `src/app/study/[pmid]/page.tsx` + `StudyDetail.tsx` — detail page (renders + persists context; Task 2+3 done).
 - `src/app/page.tsx` — home search (card markup reused for Library in Task 4).
+- `src/app/library/page.tsx` — Library page (Task 4 done; `export const dynamic = "force-dynamic"` pattern).
 - `sql/schema.sql` — schema + RLS (incl. `source_info`, `study_identified_limitations`, regenerable policies).
 - `.env.example` — required env vars (never commit `.env.local`).
 
@@ -297,8 +300,9 @@ Then, in order:
 - Save to Library: ✅ working (RLS SELECT+INSERT applied in Supabase).
 - `/api/extract-context`: ✅ 35819335 → `abstract_only` + derived limitations; 42605311 → `full_text`.
 - `/api/save-context`: ✅ implemented; persistence requires the updated `sql/schema.sql` to be applied in Supabase (user action noted in §10).
+- `/library` (Task 4): ✅ HTTP 200; home page `/` with Library nav link: HTTP 200.
 - `tsc --noEmit`: ✅ clean.
-- Git: clean on `main` (HEAD after Task 3 commit).
+- Git: clean on `main` (HEAD after Task 4 commit).
 
 ### 12.5 Environment notes
 - `.env.local` already contains `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `DEEPSEEK_API_KEY` (user set it). `DEEPSEEK_MODEL` optional.
