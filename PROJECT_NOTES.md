@@ -255,7 +255,7 @@ We are working through a 24-phase roadmap (from the project brief). Position ≈
 3. ✅ **Persist extracted context** — `/api/save-context` upserts `study_context` + child limitations; page.tsx loads DB-first. **User action:** apply updated `sql/schema.sql` in Supabase.
 4. ✅ **Library page** (`/library`) — server component lists saved studies from `studies` newest-first (`export const dynamic = "force-dynamic"`); home-page card markup reused; empty + error states; nav link on home page.
 5. ✅ **Ranked search** — `sort=relevance` (NCBI Best Match) added to ESearch in `searchPubMed`; verified against "internal external rotation bicep" (still 228 results, relevance-ordered; no filtering).
-6. ✅ **Notes on studies (Task 6)** — Supabase GitHub OAuth + `study_notes` table (RLS-locked, `user_id DEFAULT auth.uid()`) + login-gated `PersonalNotes` editor. **User actions:** (a) run updated `sql/schema.sql` in Supabase, (b) enable GitHub in Supabase Auth → Providers and set the OAuth redirect to `<app-url>/auth/callback`.
+6. ✅ **Notes on studies (Task 6)** — Supabase GitHub OAuth + `study_notes` table (RLS-locked, `user_id DEFAULT auth.uid()`) + login-gated `PersonalNotes` editor. **User actions:** (a) run updated `sql/schema.sql` in Supabase, (b) enable GitHub in Authentication → Providers with the Client ID/Secret, (c) set GitHub's authorization callback URL to Supabase's internal `https://<project-ref>.supabase.co/auth/v1/callback`, and (d) add `<app-url>/auth/callback` to Supabase URL Configuration → Redirect URLs (see §12.5 / `.env.example`).
 7. **Article/claim system** — consumes studies discovered through the Explorer (Phase 13-15).
 
 ### Workflow rule going forward
@@ -329,7 +329,7 @@ Then, in order:
 - Git: clean on `main` (HEAD after Task 6 commit).
 
 ### 12.5 Environment notes
-- `.env.local` already contains `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `DEEPSEEK_API_KEY` (user set it). `DEEPSEEK_MODEL` optional. **GitHub OAuth needs no env vars** — it is configured in the Supabase dashboard (Authentication → Providers → GitHub + OAuth redirect URL `<app-url>/auth/callback`).
+- `.env.local` already contains `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, and `DEEPSEEK_API_KEY` (user set it). `DEEPSEEK_MODEL` optional. **GitHub OAuth needs no env vars** - configured in TWO dashboards: (1) GitHub -> OAuth App -> "Authorization callback URL" must point to Supabase's INTERNAL callback `https://<project-ref>.supabase.co/auth/v1/callback` (copy it from Supabase Authentication -> Providers -> GitHub, "Callback URL") - NOT the app URL; (2) Supabase -> Authentication -> URL Configuration -> Redirect URLs -> add `<app-url>/auth/callback` (e.g. http://localhost:3000/**). See .env.example for the full walkthrough.
 - Dev server: restart after env change (`npm.cmd run dev`). If port 3000 busy: `taskkill /PID <pid> /F`.
 - Supabase project is live (don't re-run full schema unless asked; `sql/schema.sql` is source of truth — but the Task 3 + Task 6 additions DO need to be applied once for context persistence AND notes: `source_info` column, `study_identified_limitations` table + index + regenerable RLS, `study_notes` table + per-user RLS + FK indexes).
 - Test PMIDs: **35819335** (the key "missing context" case), **42605311** (open access full text).
