@@ -186,17 +186,24 @@ function applyRigidLayout(nodes: GraphNode[], links: GraphLink[]) {
       }
     }
   }
-  // Studies: at least 250px apart so adjacent bubbles never touch, at y=800.
+  // Studies: at least 250px apart so adjacent bubbles never touch. The row's
+  // Y is DYNAMIC — it travels down as needed to clear the parent claim's bottom
+  // edge (and the biggest study's top), so a large claim/study bubble never
+  // hides the connection line underneath it. Floored at 800 for tall tiers.
   const spacing = 250;
   for (const [cid, group] of studiesByClaim) {
+    const claimNode = nodes.find((n) => n.id === cid);
+    const claimRadius = claimNode?.radius ?? 30;
     const cx = claimFx.get(cid) ?? WIDTH / 2;
     const n = group.length;
+    const maxStudyR = Math.max(30, ...group.map((s) => s.radius ?? 30));
+    const rowY = Math.max(800, 450 + claimRadius + 100 + maxStudyR);
     group.forEach((s, j) => {
       const x = Math.max(50, Math.min(WIDTH - 50, cx + (j - (n - 1) / 2) * spacing));
       s.fx = x;
-      s.fy = 800;
+      s.fy = rowY;
       s.x = x;
-      s.y = 800;
+      s.y = rowY;
     });
   }
   // Any study not grouped (shouldn't happen after filtering) still gets a row.
