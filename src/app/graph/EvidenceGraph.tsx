@@ -431,16 +431,16 @@ export default function EvidenceGraph() {
           .id((d) => (d as GraphNode).id)
           .distance((link) => {
             const l = link as GraphLink;
-            return l.kind === "membership" ? 250 : 350;
+            return l.kind === "membership" ? 350 : 500;
           })
           .strength((link) => {
             const l = link as GraphLink;
             return l.kind === "membership" ? 0.7 : 0.35;
           })
       )
-      // Balanced repulsion (not an explosion): -1000 keeps nodes apart without
-      // blasting them into the walls.
-      .force("charge", forceManyBody<GraphNode>().strength(-1000))
+      // Uncapped physics: strong repulsion on an (effectively) infinite canvas —
+      // no walls, so the graph blooms outward into a clean, spacious tree.
+      .force("charge", forceManyBody<GraphNode>().strength(-2000))
       .force(
         "collide",
         // Keep the bubbles respecting personal space (radius + 20 padding).
@@ -448,27 +448,23 @@ export default function EvidenceGraph() {
           .radius((d) => d.radius + 20)
           .iterations(3)
       )
-      // Gentle centring + hierarchical stratification: pull the cluster back to
-      // the middle of the canvas, while still holding articles top / claims
-      // middle / studies bottom so it reads as a top-down tree.
-      .force("x", forceX<GraphNode>(WIDTH / 2).strength(0.12))
+      // Weak horizontal anchor so the sprawling graph doesn't drift entirely off
+      // the initial camera view; the SVG frame is just a clipped lens (overflow
+      // hidden) and the user pans/zooms to explore the larger canvas.
+      .force("x", forceX<GraphNode>(WIDTH / 2).strength(0.05))
+      // Wide hierarchical tiers so lateral line-crossings are minimised.
       .force(
         "y",
         forceY<GraphNode>(0)
-          .strength(0.3)
+          .strength(0.25)
           .y((d) =>
-            d.type === "article" ? 150 : d.type === "claim" ? 350 : 560
+            d.type === "article" ? 0 : d.type === "claim" ? 400 : 800
           )
       )
       .on("tick", () => {
-        // Radius-aware bounding box: keep the bubble EDGES inside the SVG (with
-        // 20px padding) so nothing clips, overlaps the panel border, or crushes
-        // against the walls.
-        for (const n of graph.nodes) {
-          const r = (n.radius ?? 0) + 20;
-          n.x = clamp(n.x ?? WIDTH / 2, r, WIDTH - r);
-          n.y = clamp(n.y ?? HEIGHT / 2, r, HEIGHT - r);
-        }
+        // No bounding-box clamp — nodes move freely on the (near-)infinite
+        // canvas; the SVG view is clipped by overflow-hidden and reachable via
+        // pan/zoom.
         setTick((t) => t + 1);
       });
 
