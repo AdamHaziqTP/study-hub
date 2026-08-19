@@ -692,7 +692,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
   // ---- Ready + signed in: the editor ----
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 overflow-x-clip">
-      <div className="max-w-4xl mx-auto p-8">
+      <div className="max-w-6xl mx-auto p-8">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <Link
             href="/articles"
@@ -750,8 +750,9 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
           </div>
         )}
 
-        {/* Article content */}
-        <section className="mb-10">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8 items-start">
+        {/* Article content — the main writing area (large) */}
+        <section className="mb-10 lg:col-span-3">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
             <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
               Article
@@ -768,14 +769,14 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
             ref={contentRef}
             value={draft.content}
             onChange={(e) => updateDraft({ content: e.target.value })}
-            rows={8}
+            rows={16}
             placeholder="Write your conclusion here — the reasoning that ties your claims together..."
-            className="w-full border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 rounded-lg p-3 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+            className="w-full border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 rounded-lg p-4 text-sm leading-relaxed text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[420px]"
           />
         </section>
 
-        {/* Claims */}
-        <section className="mb-10">
+        {/* Claims — sticky sidebar on wide screens so you never scroll far */}
+        <section className="mb-10 lg:col-span-2 lg:sticky lg:top-4 lg:self-start">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold">
               Claims{" "}
@@ -961,6 +962,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
             </div>
           )}
         </section>
+        </div>
       </div>
     </div>
   );

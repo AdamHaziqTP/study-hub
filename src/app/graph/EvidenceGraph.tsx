@@ -28,13 +28,16 @@ type NodeType = "article" | "claim" | "study";
 interface GraphNode extends SimulationNodeDatum {
   id: string;
   type: NodeType;
-  /** Short visible label (truncated). */
+  /** Visible label (full text, wrapped inside the bubble). */
   label: string;
   /** Full text shown in the native SVG tooltip. */
   fullLabel: string;
   /** Where a click on this node navigates. */
   href: string;
   radius: number;
+  /** Size of the HTML label box inside the bubble (text wraps to fit). */
+  boxW: number;
+  boxH: number;
   fill: string;
   textFill: string;
 }
@@ -59,20 +62,23 @@ interface GraphData {
   };
 }
 
-const truncate = (text: string, max: number) => {
-  const trimmed = text.trim().replace(/\s+/g, " ");
-  return trimmed.length > max ? `${trimmed.slice(0, max - 1)}…` : trimmed;
-};
-
 /**
- * Estimate a node radius large enough to hold its label inside the bubble.
- * Radius grows with label length so text stays within the circle; a minimum
- * base keeps small labels readable.
+ * Measure a label so the FULL text fits (wrapped) inside the node bubble.
+ * Returns the HTML label box size (a comfortable fixed width that the text
+ * wraps within) and a radius large enough to hold that box inside the circle.
  */
-const estimateRadius = (type: NodeType, labelLength: number) => {
-  const charWidth = type === "article" ? 7.2 : type === "study" ? 6.6 : 6;
-  const base = type === "article" ? 34 : type === "study" ? 28 : 24;
-  return Math.max(base, Math.ceil((labelLength * charWidth) / 2) + 8);
+const measureLabel = (type: NodeType, text: string) => {
+  const charW = type === "article" ? 7.2 : type === "study" ? 6.6 : 5.8;
+  const lineH = type === "article" ? 14 : type === "study" ? 13 : 12;
+  const targetW = 84; // fixed, comfortable box width (px)
+  const charsPerLine = Math.max(1, Math.floor((targetW - 8) / charW));
+  const lines = Math.max(1, Math.ceil(text.length / charsPerLine));
+  const boxW = targetW;
+  const boxH = lines * lineH + 8;
+  // A square of side s fits in a circle of radius r when r >= s/2 * sqrt(2).
+  const side = Math.max(boxW, boxH);
+  const radius = Math.ceil((side / 2) * Math.sqrt(2)) + 2;
+  return { boxW, boxH, radius };
 };
 
 const clamp = (v: number, min: number, max: number) =>
@@ -197,19 +203,22 @@ export default function EvidenceGraph() {
       }[];
       articleRowsTyped.forEach((article, i) => {
         const title = article.title || "Untitled article";
-        const label = truncate(title, 36);
+        const label = title;
+        const { boxW, boxH, radius } = measureLabel("article", label);
         addNode({
           id: article.id,
           type: "article",
           label,
           fullLabel: `Article: ${title}`,
           href: `/articles/${article.id}`,
-          radius: estimateRadius("article", label.length),
+          radius,
+          boxW,
+          boxH,
           fill: "#7c3aed", // violet-600
           textFill: "#ffffff",
           // Banded start position (d3-force takes over immediately).
-          x: 80 + (i % 5) * 220,
-          y: 90 + Math.floor(i / 5) * 70,
+          x: 80 + (i % 5) * 240,
+          y: 90 + Math.floor(i / 5) * 80,
         });
       });
 
@@ -223,14 +232,17 @@ export default function EvidenceGraph() {
       claimRowsTyped.forEach((claim) => {
         const parent = nodeById.get(claim.article_id);
         const text = claim.text || "Untitled claim";
-        const label = truncate(text, 30);
+        const label = text;
+        const { boxW, boxH, radius } = measureLabel("claim", label);
         addNode({
           id: claim.id,
           type: "claim",
           label,
           fullLabel: `Claim: ${text}`,
           href: `/articles/${claim.article_id}`,
-          radius: estimateRadius("claim", label.length),
+          radius,
+          boxW,
+          boxH,
           fill: "#1f2937", // gray-800
           textFill: "#ffffff",
           x: parent?.x ?? WIDTH / 2,
@@ -240,17 +252,20 @@ export default function EvidenceGraph() {
 
       // Studies (medium blue circles, banded to the bottom region).
       for (const study of studyById.values()) {
-        const label = truncate(study.title, 32);
+        const label = study.title;
+        const { boxW, boxH, radius } = measureLabel("study", label);
         addNode({
           id: study.id,
           type: "study",
           label,
           fullLabel: `Study (PMID ${study.pmid}): ${study.title}`,
           href: `/study/${study.pmid}`,
-          radius: estimateRadius("study", label.length),
+          radius,
+          boxW,
+          boxH,
           fill: "#2563eb", // blue-600
           textFill: "#ffffff",
-          x: 80 + (nodes.length % 6) * 180,
+          x: 80 + (nodes.length % 6) * 200,
           y: 580,
         });
       }
@@ -323,7 +338,8 @@ export default function EvidenceGraph() {
     if (userId) loadGraph();
   }, [userId, loadGraph]);
 
-  // Wheel-to-zoom on the SVG (native listener so preventDefault works).
+  // Wheel-to-zoom on the SVG (native listener so preventDefault works). Attached
+  // once the graph is loaded and the SVG is actually in the DOM (deps on graph).
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
@@ -334,7 +350,7 @@ export default function EvidenceGraph() {
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [graph]);
 
   // Force a re-render on every simulation tick (positions are mutated in place).
   const [, setTick] = useState(0);
@@ -607,12 +623,12 @@ export default function EvidenceGraph() {
                     strokeWidth={2}
                     className="hover:opacity-80 transition-opacity"
                   />
-                  {/* HTML label inside the bubble — wraps so text stays within the circle. */}
+                  {/* HTML label inside the bubble — wraps so the FULL text stays within the circle. */}
                   <foreignObject
-                    x={-node.radius * 0.64}
-                    y={-node.radius * 0.64}
-                    width={node.radius * 1.28}
-                    height={node.radius * 1.28}
+                    x={-node.boxW / 2}
+                    y={-node.boxH / 2}
+                    width={node.boxW}
+                    height={node.boxH}
                     pointerEvents="none"
                   >
                     <div
