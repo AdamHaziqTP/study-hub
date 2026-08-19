@@ -66,53 +66,50 @@ const ALIGNMENT_LABELS: Record<AlignmentVerdict, string> = {
  */
 
 /**
- * Text-matching highlight renderer for the article backdrop. Each claim's text
- * is RE-LOCATED in the current article on every render (first occurrence), so
- * the highlight can never drift as the user edits — there are no stored
- * character offsets to go stale. Trailing whitespace is left unhighlighted so
- * there's no blocky overhang past the last word.
+ * Offset-based highlight renderer for the article backdrop. Wraps the text at
+ * each claim's [start, end] character offsets in a <mark>. Because the offsets
+ * are maintained cursor-aware on every edit, the highlight behaves like a
+ * physical container — typing/deleting inside it stretches/shrinks it. Trailing
+ * whitespace is left unhighlighted so there's no blocky overhang.
  */
 function renderHighlightRanges(
   content: string,
-  claims: { key: string; text: string }[]
+  ranges: { key: string; start: number | null; end: number | null }[]
 ): React.ReactNode[] {
-  const matches: { start: number; end: number; key: string }[] = [];
-  for (const claim of claims) {
-    const text = claim.text.trim();
-    if (!text) continue;
-    const idx = content.indexOf(text);
-    if (idx === -1) continue; // not found (e.g. edited inside) → skip
-    matches.push({ start: idx, end: idx + text.length, key: claim.key });
-  }
-  if (matches.length === 0) return [content];
+  const valid = ranges
+    .filter(
+      (r): r is { key: string; start: number; end: number } =>
+        r.start != null && r.end != null && r.end > r.start
+    )
+    .sort((a, b) => a.start - b.start);
+  if (valid.length === 0) return [content];
 
-  matches.sort((a, b) => a.start - b.start);
   const nodes: React.ReactNode[] = [];
   let cursor = 0;
-  for (const m of matches) {
-    if (m.start < cursor) continue;
-    if (m.start > cursor) nodes.push(content.slice(cursor, m.start));
-    // Don't paint a background over invisible trailing whitespace (e.g. the
-    // space users grab after a period) — render it as plain text after the mark.
-    let visibleEnd = m.end;
-    while (visibleEnd > m.start && /\s/.test(content[visibleEnd - 1])) {
+  for (const r of valid) {
+    if (r.start < cursor) continue;
+    if (r.start > cursor) nodes.push(content.slice(cursor, r.start));
+    // Don't paint a background over invisible trailing whitespace — render it
+    // as plain text after the mark.
+    let visibleEnd = r.end;
+    while (visibleEnd > r.start && /\s/.test(content[visibleEnd - 1])) {
       visibleEnd--;
     }
-    if (visibleEnd > m.start) {
+    if (visibleEnd > r.start) {
       nodes.push(
         <mark
-          key={m.key}
+          key={r.key}
           // text-transparent: only the amber background shows behind the
           // textarea — the textarea renders the actual (crisp) text.
           className="bg-amber-200 dark:bg-amber-500/30 text-transparent rounded px-0.5 py-px"
           title="Claim — highlight shown in the article"
         >
-          {content.slice(m.start, visibleEnd)}
+          {content.slice(r.start, visibleEnd)}
         </mark>
       );
     }
-    if (visibleEnd < m.end) nodes.push(content.slice(visibleEnd, m.end));
-    cursor = m.end;
+    if (visibleEnd < r.end) nodes.push(content.slice(visibleEnd, r.end));
+    cursor = r.end;
   }
   nodes.push(content.slice(cursor));
   return nodes;
@@ -381,10 +378,16 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
   const addClaimFromSelection = () => {
     const el = contentRef.current;
     if (!el) return;
-    const start = el.selectionStart ?? 0;
-    const end = el.selectionEnd ?? 0;
-    const text = el.value.slice(start, end).trim();
-    if (!text || start === end) return;
+    const rawStart = el.selectionStart ?? 0;
+    const rawEnd = el.selectionEnd ?? 0;
+    const raw = el.value.slice(rawStart, rawEnd);
+    const text = raw.trim();
+    if (!text || rawStart === rawEnd) return;
+    // Trim the offsets to the visible text (so leading/trailing whitespace
+    // isn't part of the claim's highlight range).
+    const leading = raw.length - raw.trimStart().length;
+    const start = rawStart + leading;
+    const end = start + text.length;
     const claim: DraftClaim = {
       key: newKey(),
       id: null,
@@ -398,13 +401,35 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
   };
 
   /**
-   * Handle an article-content edit. The article is the single source of truth;
-   * claim highlights re-locate each claim's text on every render (no stored
-   * offsets), so nothing here needs to shift ranges.
+   * Handle an article-content edit with cursor-aware offset shifting. We
+   * compute where in the OLD text the edit happened (editPos), then shift each
+   * claim's offsets: edits before a claim shift its whole range; edits inside
+   * a claim grow/shrink its end — so the highlight acts like a physical
+   * container that follows your typing/deleting.
    */
-  const handleContentChange = (newValue: string, _newSelStart: number) => {
-    beforeRef.current.value = newValue;
-    setDraft((d) => ({ ...d, content: newValue }));
+  const handleContentChange = (newValue: string, newSelStart: number) => {
+    const before = beforeRef.current;
+    const delta = newValue.length - before.value.length;
+    // Position (in the OLD text) where the edit happened.
+    const editPos = newSelStart - (delta > 0 ? delta : 0);
+
+    const newClaims = draft.claims.map((claim) => {
+      if (claim.start == null || claim.end == null) return claim;
+      let start = claim.start;
+      let end = claim.end;
+      if (editPos <= start) {
+        start += delta;
+        end += delta;
+      } else if (editPos > start && editPos <= end) {
+        end += delta;
+      }
+      start = Math.max(0, Math.min(start, newValue.length));
+      end = Math.max(start, Math.min(end, newValue.length));
+      return { ...claim, start, end, text: newValue.slice(start, end) };
+    });
+
+    beforeRef.current = { value: newValue, selStart: newSelStart };
+    setDraft((d) => ({ ...d, content: newValue, claims: newClaims }));
     // The article changed — alignment verdicts are stale.
     setAlignmentByClaim({});
   };
@@ -867,7 +892,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
             >
               {renderHighlightRanges(
                 draft.content,
-                draft.claims.map((c) => ({ key: c.key, text: c.text }))
+                draft.claims.map((c) => ({ key: c.key, start: c.start, end: c.end }))
               )}
             </div>
             <textarea
@@ -940,10 +965,12 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
                     </button>
                   </div>
 
-                  {/* Read-only: the claim text captured when it was highlighted
-                      in the article. */}
+                  {/* Read-only: derived live from the claim's offset range, so it
+                      updates as you edit inside the highlight in the article. */}
                   <div className="rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3 text-sm text-gray-800 dark:text-gray-200 leading-relaxed mb-4">
-                    {claim.text}
+                    {claim.start != null && claim.end != null
+                      ? draft.content.slice(claim.start, claim.end)
+                      : claim.text}
                   </div>
 
                   {/* Alignment check (Task 9) */}
