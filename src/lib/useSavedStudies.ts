@@ -4,81 +4,178 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/browser";
 
 /**
- * Task 21 — Quick-save bookmark state.
+ * Per-account saved-studies hook (Task: "saved studies account-linked").
  *
- * A client hook that knows which study PMIDs are already saved in the shared
- * `studies` library, so the StudyCard bookmark can reflect already-saved state.
- * The `studies` table is the single source of truth (the "Library"), so there's
- * no localStorage here — we just read the saved PMIDs (RLS allows public SELECT).
+ * The Library is now a private join — `user_saved_studies(user_id, study_id)` —
+ * locked by RLS to auth.uid(). This hook loads the signed-in user's saved
+ * studies (joined to the public `studies` source registry for PMIDs) and
+ * exposes save/remove actions. It is AUTH-GATED: if no user is signed in, the
+ * library is empty and `signedIn` is false — saving requires sign-in.
  *
- * A module-level shared fetch means all cards on a page share ONE query instead
- * of each firing its own, and `markSaved` optimistically updates the set after
- * a successful `/api/save-study` POST.
- *
- * Hydration safety: the set starts empty on server + first client render and
- * is populated in a mount `useEffect` (`loaded` flips true), so a saved-state
- * icon never causes an SSR/hydration mismatch — consumers gate on `loaded`.
+ * Saving by PMID first ensures the public `studies` source row exists via
+ * /api/save-study (returns the study id), then inserts into user_saved_studies
+ * with the authenticated client (RLS sets user_id from the session).
  */
-let savedCache: Set<string> | null = null;
-let sharedFetch: Promise<Set<string>> | null = null;
 
-async function loadSaved(): Promise<Set<string>> {
-  if (savedCache) return savedCache;
-  if (!sharedFetch) {
-    sharedFetch = (async () => {
-      const client = createClient();
-      const { data, error } = await client.from("studies").select("pmid");
-      const next = new Set((data ?? []).map((r) => r.pmid));
-      if (!error) savedCache = next;
-      return next;
-    })();
-    sharedFetch.finally(() => {
-      sharedFetch = null;
-    });
-  }
-  return sharedFetch;
+interface SavedRow {
+  study_id: string;
+  studies: { pmid: string } | null;
+}
+
+export interface SaveableStudy {
+  pmid: string;
+  title: string;
+  abstract: string | null;
+  authors: string | null;
+  journal: string | null;
+  publicationDate: string | null;
 }
 
 export function useSavedStudies() {
-  const [saved, setSaved] = useState<Set<string>>(() => new Set(savedCache ?? []));
-  const [loaded, setLoaded] = useState(savedCache !== null);
+  const [signedIn, setSignedIn] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [savedPmids, setSavedPmids] = useState<Set<string>>(new Set());
+  const [savedStudyIds, setSavedStudyIds] = useState<Set<string>>(new Set());
+  const [studyIdByPmid, setStudyIdByPmid] = useState<Map<string, string>>(
+    new Map()
+  );
   const startedRef = useRef(false);
 
+  // Load the signed-in user's saved studies once.
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
     let cancelled = false;
-    void loadSaved().then((next) => {
-      if (cancelled) return;
-      setSaved(next);
-      setLoaded(true);
-    });
+    const supabase = createClient();
+
+    (async () => {
+      try {
+        const { data: authData } = await supabase.auth.getUser();
+        if (cancelled) return;
+        if (!authData.user) {
+          setSignedIn(false);
+          setLoaded(true);
+          return;
+        }
+        setSignedIn(true);
+
+        const { data, error } = await supabase
+          .from("user_saved_studies")
+          .select("study_id, studies(pmid)")
+          .order("created_at", { ascending: false });
+        if (cancelled) return;
+        if (error) throw error;
+
+        const pmids = new Set<string>();
+        const ids = new Set<string>();
+        const map = new Map<string, string>();
+        for (const row of (data ?? []) as unknown as SavedRow[]) {
+          ids.add(row.study_id);
+          if (row.studies?.pmid) {
+            pmids.add(row.studies.pmid);
+            map.set(row.studies.pmid, row.study_id);
+          }
+        }
+        setSavedPmids(pmids);
+        setSavedStudyIds(ids);
+        setStudyIdByPmid(map);
+      } catch {
+        // ignore — treat as empty/not loaded
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
   }, []);
 
-  /** Optimistically record a study as saved after a successful save. */
-  const markSaved = useCallback((pmid: string) => {
-    setSaved((prev) => {
-      if (prev.has(pmid)) return prev;
+  /** Save a study to the user's library by its studies.id (auth required). */
+  const saveStudyId = useCallback(async (studyId: string) => {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("user_saved_studies")
+      .insert({ study_id: studyId });
+    if (error) throw error;
+    setSavedStudyIds((prev) => {
       const next = new Set(prev);
-      next.add(pmid);
-      savedCache = next;
+      next.add(studyId);
       return next;
     });
   }, []);
 
-  /** Optimistically drop a study from the saved set after a successful remove. */
-  const markUnsaved = useCallback((pmid: string) => {
-    setSaved((prev) => {
-      if (!prev.has(pmid)) return prev;
+  /** Remove a study from the user's library by its studies.id (auth required). */
+  const removeStudyId = useCallback(async (studyId: string) => {
+    const supabase = createClient();
+    const { error } = await supabase
+      .from("user_saved_studies")
+      .delete()
+      .eq("study_id", studyId);
+    if (error) throw error;
+    setSavedStudyIds((prev) => {
       const next = new Set(prev);
-      next.delete(pmid);
-      savedCache = next;
+      next.delete(studyId);
       return next;
     });
   }, []);
 
-  return { saved, loaded, markSaved, markUnsaved };
+  /** Save by PMID: ensure the public source row exists, then add to the library. */
+  const savePmid = useCallback(
+    async (study: SaveableStudy) => {
+      const res = await fetch("/api/save-study", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(study),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || "Failed to save study");
+      const studyId = json.studyId as string;
+      if (!studyId) throw new Error("Could not resolve study id");
+      await saveStudyId(studyId);
+      setSavedPmids((prev) => {
+        const next = new Set(prev);
+        next.add(study.pmid);
+        return next;
+      });
+      setStudyIdByPmid((prev) => {
+        const next = new Map(prev);
+        next.set(study.pmid, studyId);
+        return next;
+      });
+    },
+    [saveStudyId]
+  );
+
+  /** Remove by PMID (resolves the studies.id from the loaded set). */
+  const removePmid = useCallback(
+    async (pmid: string) => {
+      const studyId = studyIdByPmid.get(pmid);
+      if (studyId) {
+        await removeStudyId(studyId);
+      }
+      setSavedPmids((prev) => {
+        const next = new Set(prev);
+        next.delete(pmid);
+        return next;
+      });
+      setStudyIdByPmid((prev) => {
+        const next = new Map(prev);
+        next.delete(pmid);
+        return next;
+      });
+    },
+    [studyIdByPmid, removeStudyId]
+  );
+
+  return {
+    signedIn,
+    loaded,
+    savedPmids,
+    savedStudyIds,
+    savePmid,
+    removePmid,
+    saveStudyId,
+    removeStudyId,
+  };
 }

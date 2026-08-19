@@ -52,9 +52,11 @@ export default function StudyCard({
   query,
 }: StudyCardProps) {
   const { visited, hydrated, markVisited } = useVisitedStudies();
-  const { saved, loaded, markSaved, markUnsaved } = useSavedStudies();
+  const { signedIn, loaded, savedPmids, savePmid, removePmid } =
+    useSavedStudies();
   const isVisited = hydrated && visited.has(pmid);
-  const isSaved = loaded && saved.has(pmid);
+  // Saved reflects the signed-in user's OWN library (auth-gated).
+  const isSaved = loaded && signedIn && savedPmids.has(pmid);
 
   // Task 23 — decode HTML entities (&#xb0;, &lt;, &micro;, …) to proper
   // symbols for display. Task 24 — show the FULL publication date, not just
@@ -70,29 +72,35 @@ export default function StudyCard({
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  /** Saving requires sign-in. Kick off OAuth (returns to this page) if not. */
+  const requireSignIn = async (): Promise<boolean> => {
+    if (signedIn) return true;
+    const { createClient } = await import("@/lib/supabase/browser");
+    const supabase = createClient();
+    const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+      window.location.pathname + window.location.search
+    )}`;
+    await supabase.auth.signInWithOAuth({
+      provider: "github",
+      options: { redirectTo },
+    });
+    return false;
+  };
+
   const handleSave = async () => {
     if (isSaved || busy) return;
+    if (!(await requireSignIn())) return;
     setBusy(true);
     setSaveError(null);
     try {
-      const res = await fetch("/api/save-study", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          pmid,
-          title,
-          abstract,
-          authors,
-          journal,
-          publicationDate,
-        }),
+      await savePmid({
+        pmid,
+        title,
+        abstract,
+        authors,
+        journal,
+        publicationDate,
       });
-      const json = await res.json();
-      if (!res.ok) {
-        setSaveError(json.error || "Couldn't save to Library");
-        return;
-      }
-      markSaved(pmid);
     } catch (err) {
       console.error("Quick-save failed", err);
       setSaveError("Couldn't save to Library. Please try again.");
@@ -106,15 +114,7 @@ export default function StudyCard({
     setBusy(true);
     setSaveError(null);
     try {
-      const res = await fetch(`/api/study/${encodeURIComponent(pmid)}`, {
-        method: "DELETE",
-      });
-      const json = await res.json();
-      if (!res.ok) {
-        setSaveError(json.error || "Couldn't remove from Library");
-        return;
-      }
-      markUnsaved(pmid);
+      await removePmid(pmid);
       onRemoved?.(pmid);
     } catch (err) {
       console.error("Remove-from-library failed", err);
@@ -172,8 +172,20 @@ export default function StudyCard({
             type="button"
             onClick={handleBookmark}
             disabled={busy}
-            title={isSaved ? "Remove from Library" : "Save to Library"}
-            aria-label={isSaved ? "Remove from Library" : "Save to Library"}
+            title={
+              !signedIn
+                ? "Sign in to save to Library"
+                : isSaved
+                ? "Remove from Library"
+                : "Save to Library"
+            }
+            aria-label={
+              !signedIn
+                ? "Sign in to save to Library"
+                : isSaved
+                ? "Remove from Library"
+                : "Save to Library"
+            }
             className={`mt-1 p-1.5 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
               busy
                 ? "text-blue-300 cursor-wait"

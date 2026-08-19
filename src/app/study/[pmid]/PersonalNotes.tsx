@@ -29,6 +29,7 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
   const [authLoading, setAuthLoading] = useState(true);
   const [note, setNote] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const [isSaved, setIsSaved] = useState<boolean | null>(null);
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -69,6 +70,7 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
       prevStudyId.current = studyId;
       setLoaded(false);
       setNote("");
+      setIsSaved(null);
     }
     if (!userId || !studyId) return;
 
@@ -77,6 +79,19 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
 
     (async () => {
       try {
+        // Notes are only allowed on studies the user has SAVED to their library.
+        const { data: savedRow } = await supabase
+          .from("user_saved_studies")
+          .select("id")
+          .eq("study_id", studyId)
+          .maybeSingle();
+        if (cancelled) return;
+        setIsSaved(!!savedRow);
+        if (!savedRow) {
+          setLoaded(true);
+          return;
+        }
+
         const { data } = await supabase
           .from("study_notes")
           .select("note_text")
@@ -206,8 +221,8 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
     );
   }
 
-  // ---- Signed in, but the study isn't saved to the library yet ----
-  if (!studyId) {
+  // ---- Signed in, but the study isn't SAVED to the user's library yet ----
+  if (!studyId || isSaved === false) {
     return (
       <div className="p-6 rounded-xl border border-dashed border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900">
         <p className="text-sm text-gray-600 dark:text-gray-400">
@@ -218,6 +233,16 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
           (using the "Save to Library" button above), then come back
           here to write your own note on PMID {pmid}.
         </p>
+      </div>
+    );
+  }
+
+  // ---- Signed in + saved, but still checking the saved state ----
+  if (isSaved !== true) {
+    return (
+      <div className="p-6 rounded-xl border border-gray-200 bg-white animate-pulse dark:border-gray-700 dark:bg-gray-900">
+        <div className="h-3 w-32 bg-gray-200 rounded mb-3" />
+        <div className="h-24 w-full bg-gray-100 rounded" />
       </div>
     );
   }

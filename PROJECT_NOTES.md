@@ -291,6 +291,7 @@ All of this is **committed and pushed** to GitHub (`main`).
   - Verified `tsc --noEmit` clean AND `npm run build` passes. No schema changes.
 - ✅ **Article editor: fixed full-height split view** — on wide screens the editor is now a fixed `lg:h-screen` flex column: the header/title/save row stays put, the **Article content fills the entire remaining viewport height** (`lg:flex-1`, `lg:resize-none`) so it never cuts off mid-way, and the **Claims column is its own independently scrollable panel** (`lg:overflow-y-auto`) with a fixed "Claims" header — so you scroll through claims while the article stays fixed on the left, instead of the whole page scrolling away from the article. Stacks + scrolls normally on mobile. Verified `tsc --noEmit` clean AND `npm run build` passes.
 - ✅ **Article Read view: two-column split + claim highlighting** — the read route (`/articles/[id]/read`, `ArticleReader.tsx`) now mirrors the editor: a `lg:h-screen` flex layout with the **article on the left** (full height, independently scrollable) and the **Claims & evidence sidebar on the right** (fixed header, independently scrollable). Every sentence in the article that matches a claim's text is now **highlighted** (amber `<mark>`), and clicking a highlighted claim scrolls to that claim's card in the sidebar (which lists its linked studies with relationship badges + study links). Claims whose text isn't found verbatim in the content simply aren't highlighted. Verified `tsc --noEmit` clean AND `npm run build` passes.
+- ✅ **Saved studies are now PER-ACCOUNT (data-model change)** — the Library is no longer a shared public bucket. **How:** added a new private join table `user_saved_studies(user_id, study_id)` (RLS `FOR ALL TO authenticated` locked to `auth.uid() = user_id`, `user_id DEFAULT auth.uid()`, `UNIQUE(user_id, study_id)`, FK indexes). `studies` stays as the shared public *source registry* (SELECT + INSERT cache of PubMed records), but "saving a study" now means inserting into `user_saved_studies` — which **requires sign-in**; an anonymous user cannot save. All save/library surfaces were rewired to the per-user model: `src/lib/useSavedStudies.ts` is now an auth-gated per-user hook (`signedIn`, `savedPmids`, `savedStudyIds`, `savePmid`/`removePmid`/`saveStudyId`/`removeStudyId`; saving by PMID first ensures the source row via `/api/save-study`, which now returns `studyId`); `StudyCard` bookmark saves/removes the user's own library and prompts sign-in when logged out; `StudyDetail` Save/Remove uses `user_saved_studies` via the browser client; the `/library` page is now a client `LibraryLoader` that lists the signed-in user's saved studies (login CTA otherwise); the article editor's study picker lists only the user's saved studies; and `PersonalNotes` only unlocks for studies the user has saved. **USER ACTION REQUIRED:** run the `user_saved_studies` migration block (added to the end of `sql/schema.sql`) once in the Supabase SQL Editor — see §12.5.
 - ✅ Living doc (this file)
 
 **Editor note:** if VS Code shows "Cannot find module './StudyDetail'", it's a stale TS-server cache — the file exists and `tsc` resolves it. Restart the TS server (or save any file) to clear it.
@@ -465,6 +466,26 @@ This project is developed in short agent-chat sessions. A fresh agent should be 
 - Task 18 (Sticky search header): ✅ `tsc --noEmit` clean AND `npm run build` passes (Next.js 16 production build, Turbopack) — `/` still static (`○`); no API/schema changes. The sticky header (search bar + AI-translated query disclosure pinned via `sticky top-0 z-20` + `backdrop-blur`) is **not manually re-verified in the browser this session** — verify by searching a broad topic, scrolling deep through the results, and confirming the search bar + disclosure remain pinned and readable at the top while the cards scroll underneath (on both desktop and a narrow/mobile viewport).
 
 ### 12.5 Environment notes
+- **Per-account saved studies — USER ACTION (apply once in Supabase SQL Editor):** the Library is now per-user, so a new private join table must exist. Run this block (idempotent; also embedded at the end of `sql/schema.sql`):
+  ```sql
+  CREATE TABLE IF NOT EXISTS user_saved_studies (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    user_id UUID DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+    study_id UUID REFERENCES studies(id) ON DELETE CASCADE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    UNIQUE (user_id, study_id)
+  );
+  ALTER TABLE user_saved_studies ENABLE ROW LEVEL SECURITY;
+  CREATE INDEX IF NOT EXISTS idx_user_saved_studies_user_id ON user_saved_studies (user_id);
+  CREATE INDEX IF NOT EXISTS idx_user_saved_studies_study_id ON user_saved_studies (study_id);
+  DROP POLICY IF EXISTS "Users can manage their own saved studies" ON user_saved_studies;
+  CREATE POLICY "Users can manage their own saved studies" ON user_saved_studies
+    FOR ALL TO authenticated
+    USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+  REVOKE ALL ON public.user_saved_studies FROM anon;
+  GRANT ALL ON public.user_saved_studies TO authenticated;
+  ```
+  After running it, saving a study from search (bookmark) or the study page works per-account, `/library` lists the user's own saves, and the article editor's study picker shows only the user's saved studies. Note: `/api/save-study` still creates the public `studies` source row as a side effect (that's just the shared source cache); the user-facing Library now rides on `user_saved_studies`.
 - **Task 27 — Google OAuth (USER ACTION):** to enable the "Sign in with Google" button (already in the code), do BOTH of these in dashboards (no env vars / schema needed — Supabase + Google handle the secrets):
   1. **Google Cloud:** create/use an OAuth 2.0 client ID; under *Authorized redirect URIs* add `https://<project-ref>.supabase.co/auth/v1/callback` (copy it from Supabase Authentication → Providers → Google → "Callback URL") — same pattern as GitHub's callback.
   2. **Supabase:** Authentication → Providers → Google → enable it and paste the Client ID + Client Secret from Google Cloud. Confirm the site's Redirect URL `https://study-hub-rho-drab.vercel.app/auth/callback` is in Supabase URL Configuration → Redirect URLs (already added for GitHub in Task 11; the callback is shared by both providers).

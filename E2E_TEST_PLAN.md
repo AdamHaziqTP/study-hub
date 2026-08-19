@@ -33,9 +33,10 @@ Use test PMID **35819335** (*Maeo et al., triceps overhead vs neutral*).
    blocks auto-generate on load: *Study breakdown*, *In plain English*, and
    *Evidence context + What this might mean for training* (each with a
    `sourceInfo` badge). Confirm the raw abstract appears first.
-3. **Save to Library** — click **Save to Library**; it becomes **Remove from
-   Library**; the study then appears on `/library`. On the home search card the
-   bookmark should now be filled.
+3. **Save to Library** — click **Save to Library**; if you're not signed in you'll
+   be prompted to sign in first. Once saved it becomes **Remove from Library** and
+   the study appears in your `/library`; the home search bookmark fills. (The
+   Library is now per-account — your saves are private to you.)
 4. **Note** — with the study saved, the **Personal notes** block unlocks; write
    and save a note, reload, confirm it persists (private to you).
 5. **Article + claim** — go to `/articles`, create an article, add a claim, link

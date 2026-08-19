@@ -397,3 +397,41 @@ CREATE POLICY "Public update study assessments" ON study_assessments
 
 GRANT ALL ON public.study_notes TO authenticated;
 GRANT ALL ON public.study_notes TO service_role;
+
+-- ============================================================
+-- Saved studies are now PER-ACCOUNT (Task: "saved studies account-linked")
+-- ============================================================
+-- Previously the shared `studies` table WAS the "Library" — anyone could save a
+-- study and /library listed everyone's saves. Now the source registry stays
+-- public (studies = the shared cache of PubMed source records, SELECT + INSERT
+-- only) but each user's LIBRARY is a private join table:
+--
+--   user_saved_studies(user_id, study_id)   -- "the studies I saved"
+--
+-- Saving a study now means INSERTing into user_saved_studies, which REQUIRES
+-- auth (auth.uid()) — an anonymous user cannot save. `studies` rows are only
+-- inserted as a side effect to cache the PubMed source (still public).
+-- study_notes / evidence_links already reference studies(id); the per-user
+-- "saved" concept now rides on user_saved_studies.
+CREATE TABLE IF NOT EXISTS user_saved_studies (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID DEFAULT auth.uid() REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  study_id UUID REFERENCES studies(id) ON DELETE CASCADE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+  UNIQUE (user_id, study_id)
+);
+
+ALTER TABLE user_saved_studies ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS idx_user_saved_studies_user_id ON user_saved_studies (user_id);
+CREATE INDEX IF NOT EXISTS idx_user_saved_studies_study_id ON user_saved_studies (study_id);
+
+DROP POLICY IF EXISTS "Users can manage their own saved studies" ON user_saved_studies;
+CREATE POLICY "Users can manage their own saved studies" ON user_saved_studies
+  FOR ALL
+  TO authenticated
+  USING (auth.uid() = user_id)
+  WITH CHECK (auth.uid() = user_id);
+
+REVOKE ALL ON public.user_saved_studies FROM anon;
+GRANT ALL ON public.user_saved_studies TO authenticated;

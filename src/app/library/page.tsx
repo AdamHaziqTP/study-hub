@@ -1,67 +1,31 @@
 import type { Metadata } from "next";
 import SiteNav from "@/components/SiteNav";
-import LibraryList from "./LibraryList";
-import { supabase } from "@/lib/supabase";
+import LibraryLoader from "./LibraryLoader";
 
 /**
- * Library page — lists every study saved into the shared `studies` table
- * (newest first).
+ * Library page — the SIGNED-IN user's own saved studies.
  *
- * Product rule: `studies` is the shared public library (like Wikipedia
- * entries) — anyone can READ and INSERT, nobody can modify existing rows.
- * No new RLS needed: the existing "Public read studies" SELECT policy
- * already covers this page.
- *
- * Next.js 16: this route is NOT using Cache Components (next.config.ts has
- * no `cacheComponents`), and the supabase client isn't a cached fetch, so we
- * opt the route out of static prerendering explicitly — the `studies` table
- * changes every time someone saves a study and the list must stay fresh.
+ * The Library is per-account (`user_saved_studies`), so the data is loaded
+ * client-side via the @supabase/ssr browser client (RLS filters to auth.uid())
+ * in <LibraryLoader>, which shows a login CTA when not signed in. This shell
+ * only provides the page metadata + header + nav.
  */
 export const metadata: Metadata = {
   title: "Library",
   description:
-    "Your saved exercise-science studies — the shared public library of PubMed records you've bookmarked on Study Hub.",
+    "Your saved exercise-science studies — the private library of PubMed records you've bookmarked on Study Hub.",
   openGraph: {
     type: "website",
     url: "/library",
     title: "Library | Study Hub",
     description:
-      "Your saved exercise-science studies — the shared public library of PubMed records you've bookmarked on Study Hub.",
+      "Your saved exercise-science studies — the private library of PubMed records you've bookmarked on Study Hub.",
   },
 };
 
 export const dynamic = "force-dynamic";
 
-interface SavedStudy {
-  pmid: string;
-  title: string;
-  authors: string;
-  journal: string;
-  publicationDate: string | null;
-  abstract: string;
-}
-
-export default async function LibraryPage() {
-  const { data: rows, error } = await supabase
-    .from("studies")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    console.error("Library load failed:", error);
-  }
-
-  // Map the DB rows (snake_case, nullable) onto the same display shape the
-  // home-page search cards use, so the card markup can be reused verbatim.
-  const studies: SavedStudy[] = (rows ?? []).map((row) => ({
-    pmid: row.pmid,
-    title: row.title,
-    authors: row.authors ?? "Unknown Authors",
-    journal: row.journal ?? "Unknown Journal",
-    publicationDate: row.publication_date,
-    abstract: row.abstract ?? "No abstract available",
-  }));
-
+export default function LibraryPage() {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans dark:bg-gray-950 dark:text-gray-100 overflow-x-clip">
       <div className="max-w-5xl mx-auto">
@@ -70,16 +34,7 @@ export default async function LibraryPage() {
           <SiteNav backToSearch />
         </div>
 
-        {error ? (
-          <div className="border border-red-200 bg-red-50 rounded-xl p-6 text-red-700 text-sm dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">
-            Failed to load the library. Please try again later.
-          </div>
-        ) : (
-          // Task 22 — LibraryList is a client list: it shows the count + cards,
-          // and "Remove from Library" (StudyCard onRemoved) drops a card from
-          // view + updates the count without a server re-fetch.
-          <LibraryList studies={studies} />
-        )}
+        <LibraryLoader />
       </div>
     </div>
   );

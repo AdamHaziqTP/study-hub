@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
     // 1) Check whether this study is already cached.
     const { data: existing, error: checkError } = await supabase
       .from("studies")
-      .select("pmid")
+      .select("id, pmid")
       .eq("pmid", body.pmid)
       .maybeSingle();
 
@@ -45,18 +45,27 @@ export async function POST(request: NextRequest) {
 
     if (existing) {
       // Already saved. No-op success — do not overwrite the source record.
-      return NextResponse.json({ success: true, alreadyPresent: true, pmid: body.pmid });
+      return NextResponse.json({
+        success: true,
+        alreadyPresent: true,
+        pmid: body.pmid,
+        studyId: existing.id,
+      });
     }
 
     // 2) Insert only. The public anon key has INSERT but not UPDATE.
-    const { error: insertError } = await supabase.from("studies").insert({
-      pmid: body.pmid,
-      title: body.title ?? "No title available",
-      abstract: body.abstract ?? null,
-      authors: body.authors ?? null,
-      journal: body.journal ?? null,
-      publication_date: body.publicationDate ?? null,
-    });
+    const { data: inserted, error: insertError } = await supabase
+      .from("studies")
+      .insert({
+        pmid: body.pmid,
+        title: body.title ?? "No title available",
+        abstract: body.abstract ?? null,
+        authors: body.authors ?? null,
+        journal: body.journal ?? null,
+        publication_date: body.publicationDate ?? null,
+      })
+      .select("id")
+      .maybeSingle();
 
     if (insertError) {
       console.error("Supabase insert failed:", insertError);
@@ -66,7 +75,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ success: true, alreadyPresent: false, pmid: body.pmid });
+    return NextResponse.json({
+      success: true,
+      alreadyPresent: false,
+      pmid: body.pmid,
+      studyId: inserted?.id ?? null,
+    });
   } catch (err) {
     console.error("save-study error:", err);
     return NextResponse.json(

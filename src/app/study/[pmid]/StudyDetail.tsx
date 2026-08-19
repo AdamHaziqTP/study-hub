@@ -9,6 +9,7 @@ import StudyReferences from "@/components/StudyReferences";
 import type { PubMedStudy } from "@/lib/pubmed";
 import type { StudyContext, StudySimplification, StudyAssessment } from "@/lib/ai";
 import { decodeEntities } from "@/lib/entities";
+import { useSavedStudies } from "@/lib/useSavedStudies";
 import PersonalNotes from "./PersonalNotes";
 
 interface StudyDetailProps {
@@ -64,10 +65,11 @@ export default function StudyDetail({
     ? `/?q=${encodeURIComponent(backQuery)}`
     : "/";
 
-  // Task 14: library save-state tracked client-side so the Save/Remove button
-  // reflects reality immediately; `router.refresh()` then re-renders the server
-  // page with the new `studyId` (unlocks PersonalNotes + StudyReferences).
-  const [isSaved, setIsSaved] = useState(Boolean(studyId));
+  // Task: saved studies are per-account. The Save/Remove button reflects
+  // whether THIS study is in the signed-in user's library (user_saved_studies).
+  const { signedIn, savedStudyIds, saveStudyId, removeStudyId } =
+    useSavedStudies();
+  const isSaved = signedIn && studyId ? savedStudyIds.has(studyId) : false;
   const [saving, setSaving] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -238,11 +240,24 @@ export default function StudyDetail({
   };
 
   /**
-   * MANUAL SAVE ONLY (Task 14): saves the study, then persists any AI output
-   * currently held in React state. This is the ONLY moment anything is written
-   * to the database.
+   * MANUAL SAVE ONLY (Task 14): ensures the public `studies` source row exists
+   * (/api/save-study returns the id), adds the study to the USER's library
+   * (user_saved_studies — requires sign-in), then persists any AI output
+   * currently held in React state.
    */
   const handleSaveToLibrary = async () => {
+    if (!signedIn) {
+      const { createClient } = await import("@/lib/supabase/browser");
+      const supabase = createClient();
+      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+        window.location.pathname + window.location.search
+      )}`;
+      await supabase.auth.signInWithOAuth({
+        provider: "github",
+        options: { redirectTo },
+      });
+      return;
+    }
     setSaving(true);
     setSaveError(null);
     setLibrarySaveWarnings([]);
@@ -252,9 +267,12 @@ export default function StudyDetail({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(study),
       });
+      const json = await res.json();
       if (!res.ok) throw new Error("save failed");
+      const sid = json.studyId as string | null;
+      if (!sid) throw new Error("could not resolve study id");
+      await saveStudyId(sid);
 
-      setIsSaved(true);
       // Re-render the server component so the new `studyId` propagates down
       // and PersonalNotes / StudyReferences unlock without a reload.
       router.refresh();
@@ -294,7 +312,6 @@ export default function StudyDetail({
         setLibrarySaveWarnings(failures);
       }
     } catch {
-      setIsSaved(false);
       setSaveError("Failed to save. Please try again.");
     } finally {
       setSaving(false);
@@ -302,20 +319,16 @@ export default function StudyDetail({
   };
 
   /**
-   * Task 14: remove the study from the shared library (DELETE route). The
-   * React-state AI breakdowns stay visible — only the DB copy is removed.
+   * Remove the study from the USER's library (user_saved_studies). The
+   * React-state AI breakdowns stay visible — only the DB library copy is removed.
    */
   const handleRemoveFromLibrary = async () => {
+    if (!studyId) return;
     setRemoving(true);
     setSaveError(null);
     setLibrarySaveWarnings([]);
     try {
-      const res = await fetch(`/api/study/${study.pmid}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) throw new Error("remove failed");
-
-      setIsSaved(false);
+      await removeStudyId(studyId);
       router.refresh();
     } catch {
       setSaveError("Failed to remove the study. Please try again.");

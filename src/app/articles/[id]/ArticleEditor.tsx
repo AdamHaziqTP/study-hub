@@ -170,10 +170,10 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
           return;
         }
 
-        // Load the user's saved studies for linking.
+        // Load the user's OWN saved studies for linking (library is per-account).
         const { data: studyRows, error: studiesError } = await supabase
-          .from("studies")
-          .select("id, pmid, title, journal")
+          .from("user_saved_studies")
+          .select("studies(id, pmid, title, journal)")
           .order("created_at", { ascending: false });
 
         if (cancelled) return;
@@ -232,7 +232,11 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
           links: linksByClaimId.get(c.id) ?? [],
         }));
 
-        setSavedStudies((studyRows ?? []) as LinkableStudy[]);
+        setSavedStudies(
+          ((studyRows ?? []) as unknown as Array<{ studies: LinkableStudy | null }>)
+            .map((r) => r.studies)
+            .filter((s): s is LinkableStudy => s !== null)
+        );
         setDraft({
           id: articleRow.id as string,
           title: (articleRow.title as string) ?? "",
