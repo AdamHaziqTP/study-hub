@@ -401,11 +401,11 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
   };
 
   /**
-   * Handle an article-content edit with cursor-aware offset shifting. We
-   * compute where in the OLD text the edit happened (editPos), then shift each
-   * claim's offsets: edits before a claim shift its whole range; edits inside
-   * a claim grow/shrink its end — so the highlight acts like a physical
-   * container that follows your typing/deleting.
+   * "Destructive editing" rule: if the user types/deletes anywhere INSIDE a
+   * highlighted claim, that claim is instantly destroyed (removed from the
+   * draft and deleted from the DB if it was saved). Survivors that the edit
+   * happened before simply shift their offsets by delta so they stay glued to
+   * their text. This keeps the highlight stable without fragile resizing.
    */
   const handleContentChange = (newValue: string, newSelStart: number) => {
     const before = beforeRef.current;
@@ -413,25 +413,45 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
     // Position (in the OLD text) where the edit happened.
     const editPos = newSelStart - (delta > 0 ? delta : 0);
 
-    const newClaims = draft.claims.map((claim) => {
-      if (claim.start == null || claim.end == null) return claim;
-      let start = claim.start;
-      let end = claim.end;
-      if (editPos <= start) {
-        start += delta;
-        end += delta;
-      } else if (editPos > start && editPos <= end) {
-        end += delta;
+    const destroyed: DraftClaim[] = [];
+    const newClaims = draft.claims.filter((claim) => {
+      if (claim.start == null || claim.end == null) return true; // keep unlocated
+      if (editPos > claim.start && editPos < claim.end) {
+        destroyed.push(claim); // edited inside the claim → destroy it
+        return false;
       }
-      start = Math.max(0, Math.min(start, newValue.length));
-      end = Math.max(start, Math.min(end, newValue.length));
-      return { ...claim, start, end, text: newValue.slice(start, end) };
+      return true;
+    }).map((claim) => {
+      if (claim.start == null || claim.end == null) return claim;
+      // Edit happened before this claim → shift its range so it stays on text.
+      if (editPos <= claim.start) {
+        const start = Math.max(0, Math.min(claim.start + delta, newValue.length));
+        const end = Math.max(start, Math.min(claim.end + delta, newValue.length));
+        return { ...claim, start, end, text: newValue.slice(start, end) };
+      }
+      return claim;
     });
 
     beforeRef.current = { value: newValue, selStart: newSelStart };
     setDraft((d) => ({ ...d, content: newValue, claims: newClaims }));
     // The article changed — alignment verdicts are stale.
     setAlignmentByClaim({});
+
+    // Sync the DB: delete any destroyed claim that was already persisted.
+    for (const claim of destroyed) {
+      if (claim.id) void deleteClaim(claim.id);
+    }
+  };
+
+  /** Permanently delete a claim (+ its evidence links) from the DB. */
+  const deleteClaim = async (claimId: string) => {
+    try {
+      const supabase = createClient();
+      await supabase.from("evidence_links").delete().eq("claim_id", claimId);
+      await supabase.from("claims").delete().eq("id", claimId);
+    } catch (err) {
+      console.error("Failed to delete claim", err);
+    }
   };
 
   const removeClaim = (key: string) => {
