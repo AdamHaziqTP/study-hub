@@ -431,43 +431,43 @@ export default function EvidenceGraph() {
           .id((d) => (d as GraphNode).id)
           .distance((link) => {
             const l = link as GraphLink;
-            return l.kind === "membership" ? 500 : 620;
+            return l.kind === "membership" ? 250 : 350;
           })
           .strength((link) => {
             const l = link as GraphLink;
             return l.kind === "membership" ? 0.7 : 0.35;
           })
       )
-      .force("charge", forceManyBody<GraphNode>().strength(-2500))
+      // Balanced repulsion (not an explosion): -1000 keeps nodes apart without
+      // blasting them into the walls.
+      .force("charge", forceManyBody<GraphNode>().strength(-1000))
       .force(
         "collide",
-        // Strict collision with a massive buffer (+60) so the large bubbles keep
-        // well apart and cannot overlap.
+        // Keep the bubbles respecting personal space (radius + 20 padding).
         forceCollide<GraphNode>()
-          .radius((d) => d.radius + 60)
+          .radius((d) => d.radius + 20)
           .iterations(3)
       )
-      // Hierarchical stratification (top-down tree): articles pinned toward
-      // the top, claims the middle, studies the bottom. forceY is weak-ish so
-      // collisions/links still shape the layout, but the type bands hold.
+      // Gentle centring + hierarchical stratification: pull the cluster back to
+      // the middle of the canvas, while still holding articles top / claims
+      // middle / studies bottom so it reads as a top-down tree.
+      .force("x", forceX<GraphNode>(WIDTH / 2).strength(0.12))
       .force(
         "y",
         forceY<GraphNode>(0)
-          .strength(0.22)
+          .strength(0.3)
           .y((d) =>
             d.type === "article" ? 150 : d.type === "claim" ? 350 : 560
           )
       )
-      .force(
-        "x",
-        forceX<GraphNode>(WIDTH / 2).strength(0.05)
-      )
       .on("tick", () => {
-        // Constrain nodes to a bounding box so nothing flies outside the SVG
-        // and overlaps the page UI/headers; also re-render.
+        // Radius-aware bounding box: keep the bubble EDGES inside the SVG (with
+        // 20px padding) so nothing clips, overlaps the panel border, or crushes
+        // against the walls.
         for (const n of graph.nodes) {
-          n.x = clamp(n.x ?? WIDTH / 2, 0, WIDTH);
-          n.y = clamp(n.y ?? HEIGHT / 2, 0, HEIGHT);
+          const r = (n.radius ?? 0) + 20;
+          n.x = clamp(n.x ?? WIDTH / 2, r, WIDTH - r);
+          n.y = clamp(n.y ?? HEIGHT / 2, r, HEIGHT - r);
         }
         setTick((t) => t + 1);
       });
@@ -642,7 +642,7 @@ export default function EvidenceGraph() {
           <svg
             ref={svgRef}
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-            className="w-full h-auto border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-700 dark:bg-gray-800 select-none cursor-grab overflow-visible"
+            className="w-full h-auto border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-700 dark:bg-gray-800 select-none cursor-grab overflow-hidden"
             role="img"
             aria-label="Interactive evidence graph: articles, claims, and studies connected by relationship-colored edges"
           >
