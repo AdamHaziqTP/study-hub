@@ -177,11 +177,11 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
   // ---- Unauthenticated: login call-to-action ----
   if (!authLoading && !userId) {
     return (
-      <div className="p-6 rounded-xl border border-dashed border-gray-300 bg-white text-center">
-        <p className="text-sm font-semibold text-gray-700 mb-1">
+      <div className="p-6 rounded-xl border border-dashed border-gray-300 bg-white text-center dark:border-gray-600 dark:bg-gray-900">
+        <p className="text-sm font-semibold text-gray-700 mb-1 dark:text-gray-300">
           Log in to add personal notes
         </p>
-        <p className="text-sm text-gray-500 mb-4">
+        <p className="text-sm text-gray-500 mb-4 dark:text-gray-400">
           Keep a private note on this study - e.g. "this changes how I'd
           program triceps."
         </p>
@@ -199,7 +199,7 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
   // ---- Auth loading ----
   if (authLoading) {
     return (
-      <div className="p-6 rounded-xl border border-gray-200 bg-white animate-pulse">
+      <div className="p-6 rounded-xl border border-gray-200 bg-white animate-pulse dark:border-gray-700 dark:bg-gray-900">
         <div className="h-3 w-32 bg-gray-200 rounded mb-3" />
         <div className="h-24 w-full bg-gray-100 rounded" />
       </div>
@@ -209,10 +209,10 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
   // ---- Signed in, but the study isn't saved to the library yet ----
   if (!studyId) {
     return (
-      <div className="p-6 rounded-xl border border-dashed border-gray-300 bg-white">
-        <p className="text-sm text-gray-600">
+      <div className="p-6 rounded-xl border border-dashed border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900">
+        <p className="text-sm text-gray-600 dark:text-gray-400">
           Personal notes are attached to studies in your library.{" "}
-          <span className="font-medium text-gray-800">
+          <span className="font-medium text-gray-800 dark:text-gray-200">
             Save this study to the library first
           </span>{" "}
           (using the "Save to Library" button above), then come back
@@ -224,10 +224,10 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
 
   // ---- Signed in + saved study: the editable note ----
   return (
-    <div className="p-6 rounded-xl border border-gray-200 bg-white">
+    <div className="p-6 rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-700">Your personal note</h3>
-        <span className="text-xs text-gray-400">Private - only you can see this</span>
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Your personal note</h3>
+        <span className="text-xs text-gray-400 dark:text-gray-500">Private - only you can see this</span>
       </div>
 
       <textarea
@@ -235,7 +235,7 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
         onChange={(e) => setNote(e.target.value)}
         rows={5}
         placeholder="e.g. This study changes how I'd program triceps - the overhead position hit the long head harder..."
-        className="w-full border border-gray-300 bg-white rounded-lg p-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+        className="w-full border border-gray-300 bg-white rounded-lg p-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y dark:border-gray-600 dark:bg-gray-900 dark:text-gray-200"
       />
 
       <div className="flex items-center gap-3 mt-3">
@@ -258,7 +258,7 @@ export default function PersonalNotes({ studyId, pmid }: PersonalNotesProps) {
       </div>
 
       {saveState === "error" && saveError && (
-        <div className="mt-3 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs">
+        <div className="mt-3 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs dark:bg-red-950/40 dark:border-red-900 dark:text-red-400">
           {saveError}
         </div>
       )}

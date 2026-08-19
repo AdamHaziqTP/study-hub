@@ -691,8 +691,8 @@ export default function StudyDetail({
               </p>
             </div>
           ) : assessmentState === "idle" ? (
-            <div className="p-5 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-white dark:border-gray-600 dark:bg-gray-900">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
+            <div className="p-5 rounded-xl border border-dashed border-teal-300 bg-teal-50/60 dark:border-teal-800 dark:bg-teal-950/40">
+              <p className="text-sm text-teal-800 dark:text-teal-300">
                 This section will surface the factors that affect how broadly this
                 study can be interpreted - sample size, study design, population,
                 training status, duration, and measurement - with plain-language
@@ -844,17 +844,18 @@ function BreakdownSection({
   );
 }
 
-/** Evidence-context factor card: label + plain-language "why it matters". */
+/** Evidence-context factor card: teal background matching the "Regenerate
+ *  assessment" button (bg-teal-600) with white text, instead of grey. */
 function AssessmentFactor({ label, value }: { label: string; value: string | null }) {
   return (
-    <div className="p-4 rounded-xl border border-teal-100 bg-teal-50/50">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-teal-800 mb-1.5">
+    <div className="p-4 rounded-xl border border-teal-700 bg-teal-600 dark:border-teal-800 dark:bg-teal-700">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-teal-100 mb-1.5">
         {label}
       </h3>
       {value ? (
-        <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">{value}</p>
+        <p className="text-sm text-white leading-relaxed">{value}</p>
       ) : (
-        <p className="text-sm text-gray-400 dark:text-gray-500 italic">Not provided.</p>
+        <p className="text-sm text-teal-200 italic">Not provided.</p>
       )}
     </div>
   );

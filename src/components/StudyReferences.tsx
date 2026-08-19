@@ -98,7 +98,7 @@ export default function StudyReferences({ studyId }: { studyId: string }) {
 
   if (loading) {
     return (
-      <div className="p-5 rounded-xl border border-gray-200 bg-white animate-pulse">
+      <div className="p-5 rounded-xl border border-gray-200 bg-white animate-pulse dark:border-gray-700 dark:bg-gray-900">
         <div className="h-3 w-40 bg-gray-200 rounded mb-3" />
         <div className="h-3 w-full bg-gray-100 rounded mb-1.5" />
         <div className="h-3 w-4/5 bg-gray-100 rounded" />
@@ -108,9 +108,9 @@ export default function StudyReferences({ studyId }: { studyId: string }) {
 
   if (loggedIn === false) {
     return (
-      <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white">
-        <p className="text-sm text-gray-500">
-          <span className="font-medium text-gray-700">References in your articles:</span>{" "}
+      <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          <span className="font-medium text-gray-700 dark:text-gray-300">References in your articles:</span>{" "}
           log in to see which of your claims cite this study.
         </p>
       </div>
@@ -119,7 +119,7 @@ export default function StudyReferences({ studyId }: { studyId: string }) {
 
   if (error) {
     return (
-      <div className="p-5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm">
+      <div className="p-5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">
         {error}
       </div>
     );
@@ -127,10 +127,10 @@ export default function StudyReferences({ studyId }: { studyId: string }) {
 
   if (rows.length === 0) {
     return (
-      <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white">
-        <p className="text-sm text-gray-500">
+      <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
           No claims in your articles reference this study yet.{" "}
-          <Link href="/articles" className="text-blue-600 hover:text-blue-800 font-medium">
+          <Link href="/articles" className="text-blue-600 hover:text-blue-800 font-medium dark:text-blue-400 dark:hover:text-blue-300">
             Write an article
           </Link>{" "}
           and link this study to a claim.
@@ -140,18 +140,18 @@ export default function StudyReferences({ studyId }: { studyId: string }) {
   }
 
   return (
-    <div className="p-5 rounded-xl border border-gray-200 bg-white">
-      <h3 className="text-sm font-semibold text-gray-700 mb-3">
+    <div className="p-5 rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+      <h3 className="text-sm font-semibold text-gray-700 mb-3 dark:text-gray-300">
         Referenced in your articles ({rows.length})
       </h3>
       <div className="space-y-3">
         {rows.map((row, i) => (
           <div
             key={`${row.claimId}-${i}`}
-            className="rounded-lg border border-gray-200 bg-gray-50 p-3"
+            className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800"
           >
             <div className="flex items-start justify-between gap-3">
-              <p className="text-sm text-gray-800 flex-1">"{row.claimText}"</p>
+              <p className="text-sm text-gray-800 flex-1 dark:text-gray-200">"{row.claimText}"</p>
               <span
                 className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${RELATIONSHIP_COLORS[row.relationship]}`}
               >
@@ -161,7 +161,7 @@ export default function StudyReferences({ studyId }: { studyId: string }) {
             <div className="mt-2">
               <Link
                 href={`/articles/${row.articleId}`}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium dark:text-blue-400 dark:hover:text-blue-300"
               >
                 From: {row.articleTitle} →
               </Link>

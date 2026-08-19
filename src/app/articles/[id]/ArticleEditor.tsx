@@ -719,7 +719,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
               {draft.claims.map((claim, index) => (
                 <div
                   key={claim.key}
-                  className="p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white"
+                  className="p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
                 >
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
