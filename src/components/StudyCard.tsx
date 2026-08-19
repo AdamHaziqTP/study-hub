@@ -1,18 +1,23 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useVisitedStudies } from "@/lib/useVisitedStudies";
+import { useSavedStudies } from "@/lib/useSavedStudies";
 
 /**
- * Task 20 — Visited-links indicator.
- *
  * The shared study card used by BOTH the home search results (`HomeSearch`)
- * and the Library page. It tracks whether the user has already clicked/visited
- * this study (via `useVisitedStudies`, persisted in localStorage) and, when so,
- * applies a distinct visual treatment: a subtly blue-tinted card, a
- * "✓ Visited" badge, and a blue (instead of default) title link. The visited
- * style is gated on `hydrated` so it never causes an SSR/hydration mismatch —
- * on the server + first client render it renders identical to an unvisited card.
+ * and the Library page.
+ *
+ * Task 20 — Visited-links indicator: cards show a distinct "✓ Visited"
+ * treatment (blue tint + badge + blue title link) for PMIDs the user has
+ * already clicked. Gated on `hydrated` so it never causes an SSR mismatch.
+ *
+ * Task 21 — Quick-save bookmark: a bookmark button on each card saves the
+ * study to the Library (`/api/save-study`, check-then-insert) without opening
+ * it. It reflects already-saved state (filled icon when the PMID is in the
+ * `studies` library), disables while saving, and shows an inline error on
+ * failure. Gated on `loaded` so the icon never causes an SSR/hydration mismatch.
  */
 export interface StudyCardProps {
   pmid: string;
@@ -32,7 +37,43 @@ export default function StudyCard({
   abstract,
 }: StudyCardProps) {
   const { visited, hydrated, markVisited } = useVisitedStudies();
+  const { saved, loaded, markSaved } = useSavedStudies();
   const isVisited = hydrated && visited.has(pmid);
+  const isSaved = loaded && saved.has(pmid);
+
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    if (isSaved || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch("/api/save-study", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pmid,
+          title,
+          abstract,
+          authors,
+          journal,
+          publicationDate,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setSaveError(json.error || "Couldn't save to Library");
+        return;
+      }
+      markSaved(pmid);
+    } catch (err) {
+      console.error("Quick-save failed", err);
+      setSaveError("Couldn't save to Library. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div
@@ -54,12 +95,44 @@ export default function StudyCard({
             {title}
           </h2>
         </Link>
-        {isVisited && (
-          <span className="flex-shrink-0 mt-1 inline-block bg-blue-600 text-white text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full">
-            ✓ Visited
-          </span>
-        )}
+        <div className="flex items-start gap-2 flex-shrink-0">
+          {isVisited && (
+            <span className="mt-1 inline-block bg-blue-600 text-white text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full">
+              ✓ Visited
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaved || saving}
+            title={isSaved ? "Saved to Library" : "Save to Library"}
+            aria-label={isSaved ? "Saved to Library" : "Save to Library"}
+            className={`mt-1 p-1.5 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+              saving
+                ? "text-blue-300 cursor-wait"
+                : isSaved
+                ? "text-blue-600"
+                : "text-gray-400 hover:text-blue-600"
+            }`}
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className="w-5 h-5"
+              fill={isSaved ? "currentColor" : "none"}
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+            </svg>
+          </button>
+        </div>
       </div>
+
+      {saveError && <p className="mt-1 text-sm text-red-600">{saveError}</p>}
+
       <div className="text-sm text-gray-500 mb-4 font-medium">
         {authors} • <span className="italic">{journal}</span> (
         {publicationDate?.slice(0, 4) ?? "Unknown year"}) • PMID: {pmid}
