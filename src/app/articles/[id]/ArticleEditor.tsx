@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthStatus from "@/components/AuthStatus";
@@ -818,6 +818,17 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
   }
 
   // ---- Ready + signed in: the editor ----
+  // Claims are numbered/ordered by their position in the article (start
+  // offset), not by the order they were highlighted — so Claim 1 is always the
+  // earliest-highlighted text. Unlocated claims sort last.
+  const sortedClaims = useMemo(
+    () =>
+      [...draft.claims].sort(
+        (a, b) => (a.start ?? Number.MAX_SAFE_INTEGER) - (b.start ?? Number.MAX_SAFE_INTEGER)
+      ),
+    [draft.claims]
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 overflow-x-clip">
       <div className="max-w-6xl mx-auto p-8 lg:h-screen lg:flex lg:flex-col">
@@ -967,7 +978,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
             </div>
           ) : (
             <div className="space-y-6">
-              {draft.claims.map((claim, index) => (
+              {sortedClaims.map((claim, index) => (
                 <div
                   id={`claim-${claim.key}`}
                   key={claim.key}

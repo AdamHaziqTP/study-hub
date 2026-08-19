@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import AuthStatus from "@/components/AuthStatus";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -167,6 +167,18 @@ export default function ArticleReader({ articleId }: { articleId: string }) {
     );
   }
 
+  // Order claims by their position in the article (earliest first), not by DB
+  // insertion order, so Claim 1 is always the earliest-highlighted text.
+  const sortedClaims = useMemo(
+    () =>
+      [...claims].sort((a, b) => {
+        const pa = content.indexOf(a.text);
+        const pb = content.indexOf(b.text);
+        return (pa === -1 ? Number.MAX_SAFE_INTEGER : pa) - (pb === -1 ? Number.MAX_SAFE_INTEGER : pb);
+      }),
+    [claims, content]
+  );
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 overflow-x-clip">
       <div className="max-w-6xl mx-auto p-8 lg:h-screen lg:flex lg:flex-col">
@@ -216,12 +228,12 @@ export default function ArticleReader({ articleId }: { articleId: string }) {
               Claims &amp; evidence
             </h2>
             <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:pr-1 space-y-6">
-              {claims.length === 0 ? (
+              {sortedClaims.length === 0 ? (
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   No claims yet.
                 </p>
               ) : (
-                claims.map((claim, i) => (
+                sortedClaims.map((claim, i) => (
                   <div
                     id={`claim-${claim.id}`}
                     key={claim.id}
