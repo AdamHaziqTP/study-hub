@@ -1,10 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import AuthStatus from "@/components/AuthStatus";
-import ThemeToggle from "@/components/ThemeToggle";
+import SiteNav from "@/components/SiteNav";
 import StudyCard from "@/components/StudyCard";
 import EmptySearchState, { EXAMPLE_QUERIES } from "./EmptySearchState";
 
@@ -149,8 +147,29 @@ export default function HomeSearch() {
         return;
       }
       const payload = json as AiSearchResponse;
-      resultsCache.set(term, payload);
-      setResults(payload.data || []);
+
+      // If the committed query is a bare PMID, fetch that exact study and PIN
+      // it as the top result (the related results stay below, deduped) so the
+      // user doesn't have to scroll to find the study they typed.
+      let list = payload.data || [];
+      if (/^\d+$/.test(term.trim())) {
+        try {
+          const pinRes = await fetch(`/api/study/${encodeURIComponent(term.trim())}`);
+          if (pinRes.ok) {
+            const pinJson = await pinRes.json();
+            const pinned = pinJson.study as Study | null;
+            if (pinned?.pmid) {
+              list = mergeStudies([pinned], list);
+            }
+          }
+        } catch {
+          // Ignore — fall back to the normal (unpinned) results.
+        }
+      }
+
+      const pinnedPayload = { ...payload, data: list };
+      resultsCache.set(term, pinnedPayload);
+      setResults(list);
       setTotalResults(payload.totalResults ?? null);
       setTranslatedQuery(payload.translatedQuery ?? term);
       setWasTranslated(payload.translated === true);
@@ -345,28 +364,7 @@ export default function HomeSearch() {
           <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">
             Evidence Hub
           </h1>
-          <div className="flex items-center gap-4 flex-wrap">
-            <AuthStatus />
-            <ThemeToggle />
-            <Link
-              href="/library"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              Library →
-            </Link>
-            <Link
-              href="/articles"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              My Articles →
-            </Link>
-            <Link
-              href="/graph"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              Evidence Graph →
-            </Link>
-          </div>
+          <SiteNav />
         </div>
 
         {/* Task 18 — Sticky search header: the search bar and the AI-translated

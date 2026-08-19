@@ -31,6 +31,7 @@ export default function ArticlesList() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -111,6 +112,37 @@ export default function ArticlesList() {
     }
   }, [userId, router]);
 
+  /** Delete an article + its claims + evidence links (RLS-scoped to the owner). */
+  const handleDelete = useCallback(
+    async (id: string) => {
+      if (!window.confirm("Delete this article and all its claims? This cannot be undone.")) {
+        return;
+      }
+      setDeletingId(id);
+      setError(null);
+      try {
+        const supabase = createClient();
+        const { data: claimRows } = await supabase
+          .from("claims")
+          .select("id")
+          .eq("article_id", id);
+        const claimIds = (claimRows ?? []).map((c) => c.id as string);
+        if (claimIds.length > 0) {
+          await supabase.from("evidence_links").delete().in("claim_id", claimIds);
+        }
+        await supabase.from("claims").delete().eq("article_id", id);
+        const { error: delError } = await supabase.from("articles").delete().eq("id", id);
+        if (delError) throw delError;
+        setArticles((prev) => prev.filter((a) => a.id !== id));
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to delete article");
+      } finally {
+        setDeletingId(null);
+      }
+    },
+    []
+  );
+
   // ---- Unauthenticated ----
   if (!authLoading && !userId) {
     return (
@@ -118,7 +150,7 @@ export default function ArticlesList() {
         <p className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
           Log in to write articles
         </p>
-        <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-6 max-w-md mx-auto">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">
           Articles are your own evidence-backed conclusions. Write a claim, then
           link it to the studies you have discovered in the Explorer — marking
           each as supporting, contradicting, mixed, or contextual.
@@ -205,16 +237,17 @@ export default function ArticlesList() {
       ) : (
         <div className="flex flex-col gap-4">
           {articles.map((article) => (
-            <Link
+            <div
               key={article.id}
-              href={`/articles/${article.id}`}
               className="border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow"
             >
-              <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-gray-100 leading-snug hover:text-blue-700 transition-colors">
-                {article.title}
-              </h2>
+              <Link href={`/articles/${article.id}/read`}>
+                <h2 className="text-xl font-semibold mb-2 text-gray-900 dark:text-gray-100 leading-snug hover:text-blue-700 transition-colors">
+                  {article.title}
+                </h2>
+              </Link>
               {article.content ? (
-                <p className="text-gray-600 dark:text-gray-400 dark:text-gray-500 text-sm line-clamp-2 mb-3 leading-relaxed">
+                <p className="text-gray-600 dark:text-gray-400 text-sm line-clamp-2 mb-3 leading-relaxed">
                   {article.content}
                 </p>
               ) : (
@@ -222,7 +255,7 @@ export default function ArticlesList() {
                   No content yet
                 </p>
               )}
-              <p className="text-xs text-gray-400 dark:text-gray-500">
+              <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">
                 Updated{" "}
                 {new Date(article.updated_at).toLocaleDateString()} ·{" "}
                 {new Date(article.updated_at).toLocaleTimeString([], {
@@ -230,7 +263,28 @@ export default function ArticlesList() {
                   minute: "2-digit",
                 })}
               </p>
-            </Link>
+              <div className="flex items-center gap-2">
+                <Link
+                  href={`/articles/${article.id}/read`}
+                  className="text-sm font-semibold text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 px-3 py-1.5 rounded-lg border border-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+                >
+                  Read
+                </Link>
+                <Link
+                  href={`/articles/${article.id}`}
+                  className="text-sm font-semibold text-gray-700 dark:text-gray-200 px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  Edit
+                </Link>
+                <button
+                  onClick={() => handleDelete(article.id)}
+                  disabled={deletingId === article.id}
+                  className="text-sm font-semibold text-red-600 dark:text-red-400 px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-800 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors disabled:opacity-50"
+                >
+                  {deletingId === article.id ? "Deleting..." : "Delete"}
+                </button>
+              </div>
+            </div>
           ))}
         </div>
       )}

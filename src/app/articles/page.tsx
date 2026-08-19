@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import AuthStatus from "@/components/AuthStatus";
-import ThemeToggle from "@/components/ThemeToggle";
-import Link from "next/link";
+import SiteNav from "@/components/SiteNav";
 import ArticlesList from "./ArticlesList";
 
 /**
@@ -33,22 +31,7 @@ export default function ArticlesPage() {
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">My Articles</h1>
-          <div className="flex items-center gap-4">
-            <AuthStatus />
-            <ThemeToggle />
-            <Link
-              href="/graph"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              Evidence Graph →
-            </Link>
-            <Link
-              href="/"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              ← Back to search
-            </Link>
-          </div>
+          <SiteNav backToSearch />
         </div>
 
         <ArticlesList />

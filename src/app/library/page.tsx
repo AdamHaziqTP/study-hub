@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import AuthStatus from "@/components/AuthStatus";
-import ThemeToggle from "@/components/ThemeToggle";
+import SiteNav from "@/components/SiteNav";
 import LibraryList from "./LibraryList";
 import { supabase } from "@/lib/supabase";
 
@@ -69,28 +67,7 @@ export default async function LibraryPage() {
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">Library</h1>
-          <div className="flex items-center gap-4">
-            <AuthStatus />
-            <ThemeToggle />
-            <Link
-              href="/articles"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              My Articles →
-            </Link>
-            <Link
-              href="/graph"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              Evidence Graph →
-            </Link>
-            <Link
-              href="/"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              ← Back to search
-            </Link>
-          </div>
+          <SiteNav backToSearch />
         </div>
 
         {error ? (

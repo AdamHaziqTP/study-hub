@@ -65,6 +65,20 @@ const truncate = (text: string, max: number) => {
 };
 
 /**
+ * Estimate a node radius large enough to hold its label inside the bubble.
+ * Radius grows with label length so text stays within the circle; a minimum
+ * base keeps small labels readable.
+ */
+const estimateRadius = (type: NodeType, labelLength: number) => {
+  const charWidth = type === "article" ? 7.2 : type === "study" ? 6.6 : 6;
+  const base = type === "article" ? 34 : type === "study" ? 28 : 24;
+  return Math.max(base, Math.ceil((labelLength * charWidth) / 2) + 8);
+};
+
+const clamp = (v: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, v));
+
+/**
  * EvidenceGraph — Task 8.
  *
  * Visualizes the signed-in user's evidence graph:
@@ -91,6 +105,13 @@ export default function EvidenceGraph() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [graph, setGraph] = useState<GraphData | null>(null);
+
+  // Zoom (k = scale factor). Wheel + the +/- buttons zoom around the SVG
+  // center; Reset returns to 100%.
+  const [zoomK, setZoomK] = useState(1);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const zoomBy = (factor: number) => setZoomK((k) => clamp(k * factor, 0.4, 3));
+  const resetZoom = () => setZoomK(1);
 
   // Simulation instance persists across renders; only re-created when the
   // loaded graph changes (or the auth user changes).
@@ -176,13 +197,14 @@ export default function EvidenceGraph() {
       }[];
       articleRowsTyped.forEach((article, i) => {
         const title = article.title || "Untitled article";
+        const label = truncate(title, 36);
         addNode({
           id: article.id,
           type: "article",
-          label: truncate(title, 28),
+          label,
           fullLabel: `Article: ${title}`,
           href: `/articles/${article.id}`,
-          radius: 30,
+          radius: estimateRadius("article", label.length),
           fill: "#7c3aed", // violet-600
           textFill: "#ffffff",
           // Banded start position (d3-force takes over immediately).
@@ -201,13 +223,14 @@ export default function EvidenceGraph() {
       claimRowsTyped.forEach((claim) => {
         const parent = nodeById.get(claim.article_id);
         const text = claim.text || "Untitled claim";
+        const label = truncate(text, 30);
         addNode({
           id: claim.id,
           type: "claim",
-          label: truncate(text, 24),
+          label,
           fullLabel: `Claim: ${text}`,
           href: `/articles/${claim.article_id}`,
-          radius: 18,
+          radius: estimateRadius("claim", label.length),
           fill: "#1f2937", // gray-800
           textFill: "#ffffff",
           x: parent?.x ?? WIDTH / 2,
@@ -217,13 +240,14 @@ export default function EvidenceGraph() {
 
       // Studies (medium blue circles, banded to the bottom region).
       for (const study of studyById.values()) {
+        const label = truncate(study.title, 32);
         addNode({
           id: study.id,
           type: "study",
-          label: truncate(study.title, 26),
+          label,
           fullLabel: `Study (PMID ${study.pmid}): ${study.title}`,
           href: `/study/${study.pmid}`,
-          radius: 22,
+          radius: estimateRadius("study", label.length),
           fill: "#2563eb", // blue-600
           textFill: "#ffffff",
           x: 80 + (nodes.length % 6) * 180,
@@ -299,6 +323,19 @@ export default function EvidenceGraph() {
     if (userId) loadGraph();
   }, [userId, loadGraph]);
 
+  // Wheel-to-zoom on the SVG (native listener so preventDefault works).
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      setZoomK((k) => clamp(k * factor, 0.4, 3));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
+
   // Force a re-render on every simulation tick (positions are mutated in place).
   const [, setTick] = useState(0);
 
@@ -369,7 +406,7 @@ export default function EvidenceGraph() {
         <p className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
           Log in to view your evidence graph
         </p>
-        <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-6 max-w-md mx-auto">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">
           Visualize how your articles, claims, and saved studies connect — with
           supports, contradicts, mixed, and contextual relationships as colored
           edges.
@@ -408,7 +445,7 @@ export default function EvidenceGraph() {
         <p className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
           No evidence graph yet
         </p>
-        <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-6">
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
           Write an article, add a claim, and link it to a study. Your graph
           appears here automatically.
         </p>
@@ -435,18 +472,18 @@ export default function EvidenceGraph() {
         <>
           {/* Legend */}
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3">
-            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide">
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
               Legend
             </span>
-            <span className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
+            <span className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
               <span className="inline-block w-3 h-3 rounded-full bg-violet-600" />
               Article
             </span>
-            <span className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
+            <span className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
               <span className="inline-block w-3 h-3 rounded-full bg-gray-800" />
               Claim
             </span>
-            <span className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
+            <span className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
               <span className="inline-block w-3 h-3 rounded-full bg-blue-600" />
               Study
             </span>
@@ -454,7 +491,7 @@ export default function EvidenceGraph() {
               (r) => (
                 <span
                   key={r}
-                  className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500"
+                  className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400"
                 >
                   <span
                     className="inline-block w-4"
@@ -476,7 +513,35 @@ export default function EvidenceGraph() {
             </span>
           </div>
 
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <button
+              onClick={() => zoomBy(1.25)}
+              className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              title="Zoom in"
+            >
+              +
+            </button>
+            <button
+              onClick={() => zoomBy(1 / 1.25)}
+              className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              title="Zoom out"
+            >
+              −
+            </button>
+            <button
+              onClick={resetZoom}
+              className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+              title="Reset zoom"
+            >
+              Reset
+            </button>
+            <span className="text-xs text-gray-400 dark:text-gray-500">
+              {Math.round(zoomK * 100)}% · scroll or use +/− to zoom
+            </span>
+          </div>
+
           <svg
+            ref={svgRef}
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
             className="w-full h-auto border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-700 dark:bg-gray-800 select-none"
             role="img"
@@ -497,6 +562,10 @@ export default function EvidenceGraph() {
               </marker>
             </defs>
 
+            {/* Zoom-to-center wrapper for edges + nodes. */}
+            <g
+              transform={`translate(${WIDTH / 2} ${HEIGHT / 2}) scale(${zoomK}) translate(${-WIDTH / 2} ${-HEIGHT / 2})`}
+            >
             {/* Edges */}
             <g>
               {graph.links.map((link) => {
@@ -538,20 +607,39 @@ export default function EvidenceGraph() {
                     strokeWidth={2}
                     className="hover:opacity-80 transition-opacity"
                   />
-                  <text
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    fill={node.textFill}
-                    fontSize={node.type === "article" ? 11 : 9.5}
-                    fontWeight={600}
+                  {/* HTML label inside the bubble — wraps so text stays within the circle. */}
+                  <foreignObject
+                    x={-node.radius * 0.64}
+                    y={-node.radius * 0.64}
+                    width={node.radius * 1.28}
+                    height={node.radius * 1.28}
                     pointerEvents="none"
-                    className="select-none"
-                    style={{ userSelect: "none" }}
                   >
-                    {node.label}
-                  </text>
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        textAlign: "center",
+                        color: node.textFill,
+                        fontSize: node.type === "article" ? 11 : 9.5,
+                        fontWeight: 600,
+                        lineHeight: 1.1,
+                        overflowWrap: "break-word",
+                        wordBreak: "break-word",
+                        padding: 2,
+                        userSelect: "none",
+                        cursor: "inherit",
+                      }}
+                    >
+                      {node.label}
+                    </div>
+                  </foreignObject>
                 </g>
               ))}
+            </g>
             </g>
           </svg>
 

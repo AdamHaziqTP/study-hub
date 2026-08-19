@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabase } from "@/lib/supabase";
+import { fetchPubMedStudyById } from "@/lib/pubmed";
 
 /**
  * DELETE /api/study/[pmid]
@@ -17,6 +18,24 @@ import { supabase } from "@/lib/supabase";
  *
  * Next.js 16: `params` is a Promise and must be awaited.
  */
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ pmid: string }> }
+) {
+  const { pmid } = await params;
+  if (!pmid) {
+    return NextResponse.json({ error: "Missing pmid" }, { status: 400 });
+  }
+  const study = await fetchPubMedStudyById(pmid);
+  if (!study) {
+    return NextResponse.json(
+      { error: "Study not found in PubMed" },
+      { status: 404 }
+    );
+  }
+  return NextResponse.json({ study });
+}
+
 export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ pmid: string }> }

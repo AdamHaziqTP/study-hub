@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthStatus from "@/components/AuthStatus";
+import ThemeToggle from "@/components/ThemeToggle";
 import { createClient } from "@/lib/supabase/browser";
 import {
   RELATIONSHIP_COLORS,
@@ -92,6 +93,9 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
   const initialLinks = useRef<
     { id: string; claimId: string; relationship: EvidenceRelationship }[]
   >([]);
+
+  // Ref to the Article content textarea, so a selection can be turned into a claim.
+  const contentRef = useRef<HTMLTextAreaElement>(null);
 
   // 1) Auth check + initial load (article, claims, links, saved studies).
   useEffect(() => {
@@ -287,10 +291,26 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
   const patchClaims = (fn: (claims: DraftClaim[]) => DraftClaim[]) =>
     setDraft((d) => ({ ...d, claims: fn(d.claims) }));
 
-  const addClaim = () => {
-    const claim: DraftClaim = { key: newKey(), id: null, text: "", links: [] };
+  const addClaim = (initialText = "") => {
+    const claim: DraftClaim = {
+      key: newKey(),
+      id: null,
+      text: initialText,
+      links: [],
+    };
     patchClaims((claims) => [...claims, claim]);
     setSearch("");
+  };
+
+  /** Turn the text currently selected in the Article content box into a claim. */
+  const addClaimFromSelection = () => {
+    const el = contentRef.current;
+    if (!el) return;
+    const text = el.value
+      .slice(el.selectionStart ?? 0, el.selectionEnd ?? 0)
+      .trim();
+    if (!text) return;
+    addClaim(text);
   };
 
   const updateClaimText = (key: string, text: string) => {
@@ -570,6 +590,40 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
     }
   };
 
+  /** Delete the whole article + claims + evidence links (RLS-scoped to owner). */
+  const handleDeleteArticle = async () => {
+    if (!articleId) return;
+    if (
+      !window.confirm(
+        "Delete this article and all its claims? This cannot be undone."
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setSaveError(null);
+    try {
+      const supabase = createClient();
+      const { data: claimRows } = await supabase
+        .from("claims")
+        .select("id")
+        .eq("article_id", articleId);
+      const claimIds = (claimRows ?? []).map((c) => c.id as string);
+      if (claimIds.length > 0) {
+        await supabase.from("evidence_links").delete().in("claim_id", claimIds);
+      }
+      await supabase.from("claims").delete().eq("article_id", articleId);
+      const { error } = await supabase.from("articles").delete().eq("id", articleId);
+      if (error) throw new Error(`Delete: ${describeError(error)}`);
+      router.push("/articles");
+    } catch (err) {
+      console.error("Delete article failed:", err);
+      setSaveError(err instanceof Error ? err.message : "Failed to delete article");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   // ---- Unauthenticated ----
   if (loadState === "auth") {
     return (
@@ -639,15 +693,21 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 overflow-x-clip">
       <div className="max-w-4xl mx-auto p-8">
-        <div className="flex items-center justify-between mb-8">
-          <Link href="/articles" className="text-sm font-medium text-blue-600 hover:text-blue-800">
-            ← Back to my articles
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
+          <Link
+            href="/articles"
+            className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+          >
+            ← My Articles
           </Link>
-          <AuthStatus />
+          <div className="flex flex-wrap items-center gap-4">
+            <AuthStatus />
+            <ThemeToggle />
+          </div>
         </div>
 
-        <div className="flex items-start justify-between gap-4 mb-8">
-          <div className="flex-1">
+        <div className="flex flex-wrap items-start justify-between gap-4 mb-8">
+          <div className="flex-1 min-w-[220px]">
             <input
               value={draft.title}
               onChange={(e) => updateDraft({ title: e.target.value })}
@@ -655,13 +715,28 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
               className="w-full text-3xl font-bold leading-tight bg-transparent border-b-2 border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:outline-none pb-2 text-gray-900 dark:text-gray-100"
             />
           </div>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm whitespace-nowrap"
-          >
-            {saving ? "Saving..." : "Save article"}
-          </button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href={`/articles/${articleId}/read`}
+              className="border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 px-4 py-2.5 rounded-lg font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm whitespace-nowrap"
+            >
+              Read
+            </Link>
+            <button
+              onClick={handleDeleteArticle}
+              disabled={busy}
+              className="border border-red-300 dark:border-red-800 text-red-600 dark:text-red-400 px-4 py-2.5 rounded-lg font-semibold hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors text-sm whitespace-nowrap disabled:opacity-50"
+            >
+              {busy ? "Deleting..." : "Delete"}
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="bg-blue-600 text-white px-6 py-2.5 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors text-sm whitespace-nowrap"
+            >
+              {saving ? "Saving..." : "Save article"}
+            </button>
+          </div>
         </div>
 
         {saved && (
@@ -677,10 +752,20 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
 
         {/* Article content */}
         <section className="mb-10">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 mb-3">
-            Article
-          </h2>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Article
+            </h2>
+            <button
+              onClick={addClaimFromSelection}
+              className="text-xs font-semibold border border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-500 px-3 py-1.5 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+              title="Select text in the article, then click to add it as a claim you can link studies to"
+            >
+              ✂ Turn selection into a claim
+            </button>
+          </div>
           <textarea
+            ref={contentRef}
             value={draft.content}
             onChange={(e) => updateDraft({ content: e.target.value })}
             rows={8}
@@ -699,8 +784,8 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
               </span>
             </h2>
             <button
-              onClick={addClaim}
-              className="border border-blue-600 text-blue-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-50 transition-colors"
+              onClick={() => addClaim()}
+              className="border border-blue-600 text-blue-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-50 transition-colors dark:text-blue-400 dark:border-blue-500 dark:hover:bg-blue-900/30"
             >
               + Add claim
             </button>
@@ -926,7 +1011,7 @@ function StudyPicker({
           {visible.map((study) => (
             <div
               key={study.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white px-3 py-2"
+              className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2"
             >
               <div className="min-w-0">
                 <p className="text-sm text-gray-800 dark:text-gray-200 font-medium line-clamp-1">

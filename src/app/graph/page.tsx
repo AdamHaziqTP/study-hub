@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
-import AuthStatus from "@/components/AuthStatus";
-import ThemeToggle from "@/components/ThemeToggle";
 import Link from "next/link";
+import SiteNav from "@/components/SiteNav";
 import EvidenceGraph from "./EvidenceGraph";
 
 /**
@@ -36,22 +35,7 @@ export default function GraphPage() {
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">Evidence Graph</h1>
-          <div className="flex items-center gap-4">
-            <AuthStatus />
-            <ThemeToggle />
-            <Link
-              href="/articles"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              My Articles →
-            </Link>
-            <Link
-              href="/"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
-            >
-              ← Back to search
-            </Link>
-          </div>
+          <SiteNav backToSearch />
         </div>
 
         {/* Task 28 — Evidence Graph explanation: a plain-English onboarding
