@@ -10,11 +10,12 @@ import {
   type EvidenceRelationship,
 } from "@/lib/articles";
 import {
-  forceCenter,
   forceCollide,
   forceLink,
   forceManyBody,
   forceSimulation,
+  forceX,
+  forceY,
   type Simulation,
   type SimulationLinkDatum,
   type SimulationNodeDatum,
@@ -430,7 +431,7 @@ export default function EvidenceGraph() {
           .id((d) => (d as GraphNode).id)
           .distance((link) => {
             const l = link as GraphLink;
-            return l.kind === "membership" ? 70 : 130;
+            return l.kind === "membership" ? 90 : 170;
           })
           .strength((link) => {
             const l = link as GraphLink;
@@ -440,11 +441,27 @@ export default function EvidenceGraph() {
       .force("charge", forceManyBody<GraphNode>().strength(-520))
       .force(
         "collide",
+        // Strict collision using each node's dynamically measured radius so the
+        // bubbles themselves never overlap.
         forceCollide<GraphNode>()
-          .radius((d) => d.radius + 26)
-          .iterations(2)
+          .radius((d) => d.radius + 14)
+          .iterations(3)
       )
-      .force("center", forceCenter(WIDTH / 2, HEIGHT / 2))
+      // Hierarchical stratification (top-down tree): articles pinned toward
+      // the top, claims the middle, studies the bottom. forceY is weak-ish so
+      // collisions/links still shape the layout, but the type bands hold.
+      .force(
+        "y",
+        forceY<GraphNode>(0)
+          .strength(0.22)
+          .y((d) =>
+            d.type === "article" ? 150 : d.type === "claim" ? 350 : 560
+          )
+      )
+      .force(
+        "x",
+        forceX<GraphNode>(WIDTH / 2).strength(0.05)
+      )
       .on("tick", () => {
         // Re-render by letting React read the mutated node/link positions.
         setTick((t) => t + 1);
@@ -643,20 +660,32 @@ export default function EvidenceGraph() {
             <g
               transform={`translate(${view.x} ${view.y}) scale(${view.k})`}
             >
-            {/* Edges */}
+            {/* Edges — quadratic bezier paths that sweep between nodes instead
+                of straight lines cutting through the graph. */}
             <g>
               {graph.links.map((link) => {
                 const s = link.source as GraphNode;
                 const t = link.target as GraphNode;
-                if (!s?.x || !t?.x) return null;
+                if (!s?.x || !t?.x || s.y == null || t.y == null) return null;
                 const isEvidence = link.kind === "evidence";
+
+                // Control point: midpoint of the two nodes, nudged along the
+                // perpendicular so the edge arcs out from the straight line.
+                const mx = (s.x + t.x) / 2;
+                const my = (s.y + t.y) / 2;
+                const dx = t.x - s.x;
+                const dy = t.y - s.y;
+                const len = Math.hypot(dx, dy) || 1;
+                const curve = isEvidence ? 0.24 : 0.14;
+                const cx = mx - (dy / len) * len * curve;
+                const cy = my + (dx / len) * len * curve;
+                const d = `M ${s.x} ${s.y} Q ${cx} ${cy} ${t.x} ${t.y}`;
+
                 return (
-                  <line
+                  <path
                     key={link.id}
-                    x1={s.x}
-                    y1={s.y}
-                    x2={t.x}
-                    y2={t.y}
+                    d={d}
+                    fill="none"
                     stroke={link.color}
                     strokeWidth={isEvidence ? 2.5 : 1.5}
                     strokeOpacity={isEvidence ? 1 : 0.45}
