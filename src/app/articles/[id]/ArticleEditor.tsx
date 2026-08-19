@@ -15,6 +15,7 @@ import {
   type EvidenceRelationship,
   type LinkableStudy,
 } from "@/lib/articles";
+import { renderClaimHighlights } from "@/lib/renderClaimHighlights";
 
 interface ArticleEditorProps {
   articleId: string;
@@ -777,6 +778,24 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
             placeholder="Write your conclusion here — the reasoning that ties your claims together..."
             className="w-full border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 rounded-lg p-4 text-sm leading-relaxed text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[420px] resize-y lg:flex-1 lg:min-h-0 lg:resize-none"
           />
+
+          {/* Live claim highlights — shows exactly where each claim sits in the
+              article as you write (turn a selection into a claim to highlight). */}
+          {draft.claims.length > 0 && (
+            <div className="mt-4 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/40 dark:bg-amber-950/20 p-3 lg:mt-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300 mb-2">
+                Claim highlights
+              </p>
+              <div className="text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line text-sm">
+                {draft.content
+                  ? renderClaimHighlights(
+                      draft.content,
+                      draft.claims.map((c) => ({ id: c.key, text: c.text }))
+                    )
+                  : "Start writing, then select a sentence and hit “Turn selection into a claim”."}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Claims — independently scrollable sidebar (article stays fixed on the left) */}
@@ -788,13 +807,12 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
                 ({draft.claims.length})
               </span>
             </h2>
-            <button
-              onClick={() => addClaim()}
-              className="border border-blue-600 text-blue-600 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-50 transition-colors dark:text-blue-400 dark:border-blue-500 dark:hover:bg-blue-900/30"
-            >
-              + Add claim
-            </button>
           </div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 -mt-2">
+            Select a sentence in your article and hit{" "}
+            <span className="font-semibold">✂ Turn selection into a claim</span>{" "}
+            to add one.
+          </p>
 
           <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:pr-1">
           {draft.claims.length === 0 ? (
@@ -809,8 +827,9 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
             <div className="space-y-6">
               {draft.claims.map((claim, index) => (
                 <div
+                  id={`claim-${claim.key}`}
                   key={claim.key}
-                  className="p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                  className="p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 scroll-mt-4"
                 >
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">

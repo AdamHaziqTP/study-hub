@@ -10,6 +10,7 @@ import {
   type EvidenceRelationship,
 } from "@/lib/articles";
 import { createClient } from "@/lib/supabase/browser";
+import { renderClaimHighlights } from "@/lib/renderClaimHighlights";
 
 /**
  * ArticleReader — read-only view of an article (Read action).
@@ -38,54 +39,6 @@ interface ReaderClaim {
 }
 
 type LoadState = "auth" | "loading" | "ready" | "notfound" | "error";
-
-/**
- * Split the article content into React nodes, wrapping every occurrence of a
- * claim's text in a highlighted <mark> so the reader can see which sentences
- * are claims (and click one to jump to its linked studies in the sidebar).
- * Claims whose text isn't found verbatim are simply not highlighted.
- */
-function renderContentWithClaims(
-  content: string,
-  claims: ReaderClaim[]
-): React.ReactNode[] {
-  const matches: { start: number; end: number; claim: ReaderClaim }[] = [];
-  for (const claim of claims) {
-    const text = claim.text.trim();
-    if (!text) continue;
-    let idx = content.indexOf(text);
-    while (idx !== -1) {
-      matches.push({ start: idx, end: idx + text.length, claim });
-      idx = content.indexOf(text, idx + text.length);
-    }
-  }
-  if (matches.length === 0) return [content];
-
-  matches.sort((a, b) => a.start - b.start);
-  const nodes: React.ReactNode[] = [];
-  let cursor = 0;
-  for (const m of matches) {
-    if (m.start < cursor) continue; // skip overlaps / duplicates
-    if (m.start > cursor) nodes.push(content.slice(cursor, m.start));
-    nodes.push(
-      <mark
-        key={`${m.claim.id}-${m.start}`}
-        className="bg-amber-200 text-gray-900 dark:bg-amber-500/30 dark:text-amber-100 rounded px-0.5 py-px cursor-pointer hover:bg-amber-300 dark:hover:bg-amber-500/50"
-        title={`Linked claim — click to see its studies`}
-        onClick={() =>
-          document
-            .getElementById(`claim-${m.claim.id}`)
-            ?.scrollIntoView({ behavior: "smooth", block: "start" })
-        }
-      >
-        {content.slice(m.start, m.end)}
-      </mark>
-    );
-    cursor = m.end;
-  }
-  if (cursor < content.length) nodes.push(content.slice(cursor));
-  return nodes;
-}
 
 export default function ArticleReader({ articleId }: { articleId: string }) {
   const [loadState, setLoadState] = useState<LoadState>("auth");
@@ -244,7 +197,12 @@ export default function ArticleReader({ articleId }: { articleId: string }) {
           {/* Article (left) — full height, independently scrollable */}
           <article className="lg:col-span-3 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pr-2">
             <div className="text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line text-base pr-1">
-              {content ? renderContentWithClaims(content, claims) : "No content yet."}
+              {content
+                ? renderClaimHighlights(
+                    content,
+                    claims.map((c) => ({ id: c.id, text: c.text }))
+                  )
+                : "No content yet."}
             </div>
             <p className="mt-6 text-xs text-gray-400 dark:text-gray-500">
               Highlighted sentences are claims — click one to jump to its linked
