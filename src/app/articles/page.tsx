@@ -29,7 +29,7 @@ export const dynamic = "force-dynamic";
 
 export default function ArticlesPage() {
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans dark:bg-gray-950 dark:text-gray-100">
+    <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans dark:bg-gray-950 dark:text-gray-100 overflow-x-clip">
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">My Articles</h1>

@@ -339,7 +339,7 @@ export default function HomeSearch() {
     (totalResults === null || results.length < totalResults);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans dark:bg-gray-950 dark:text-gray-100">
+    <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans dark:bg-gray-950 dark:text-gray-100 overflow-x-clip">
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">
@@ -384,12 +384,12 @@ export default function HomeSearch() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder='Ask a question, e.g. "how many times a week should I train?"'
-              className="flex-1 min-w-[260px] border border-gray-300 bg-white rounded-lg p-4 text-black text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
+              className="w-full sm:w-auto sm:flex-1 sm:min-w-[260px] border border-gray-300 bg-white rounded-lg p-4 text-black text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
             />
             <button
               type="submit"
               disabled={loading}
-              className="bg-blue-600 text-white px-8 py-4 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
+              className="w-full sm:w-auto bg-blue-600 text-white px-8 py-4 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
             >
               {loading ? "Searching NLM..." : "Search PubMed"}
             </button>
