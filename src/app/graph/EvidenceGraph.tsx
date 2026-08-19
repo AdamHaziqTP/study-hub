@@ -157,14 +157,16 @@ function applyRigidLayout(nodes: GraphNode[], links: GraphLink[]) {
 
   if (article) {
     article.fx = WIDTH / 2;
-    article.fy = 150;
+    article.fy = 100;
     article.x = WIDTH / 2;
-    article.y = 150;
+    article.y = 100;
   }
 
+  // Claims: spread ~400px apart, centered across the canvas, at y=450.
   const claimCount = claims.length;
+  const claimSpacing = 400;
   claims.forEach((c, i) => {
-    c.fx = claimCount === 1 ? WIDTH / 2 : ((i + 1) * WIDTH) / (claimCount + 1);
+    c.fx = WIDTH / 2 + (i - (claimCount - 1) / 2) * claimSpacing;
     c.fy = 450;
     c.x = c.fx;
     c.y = c.fy;
@@ -184,24 +186,25 @@ function applyRigidLayout(nodes: GraphNode[], links: GraphLink[]) {
       }
     }
   }
-  const spacing = 220;
+  // Studies: at least 250px apart so adjacent bubbles never touch, at y=800.
+  const spacing = 250;
   for (const [cid, group] of studiesByClaim) {
     const cx = claimFx.get(cid) ?? WIDTH / 2;
     const n = group.length;
     group.forEach((s, j) => {
       const x = Math.max(50, Math.min(WIDTH - 50, cx + (j - (n - 1) / 2) * spacing));
       s.fx = x;
-      s.fy = 750;
+      s.fy = 800;
       s.x = x;
-      s.y = 750;
+      s.y = 800;
     });
   }
   // Any study not grouped (shouldn't happen after filtering) still gets a row.
   studies
     .filter((s) => s.fx == null)
     .forEach((s, i) => {
-      s.fx = 50 + (i + 1) * 220;
-      s.fy = 750;
+      s.fx = 50 + (i + 1) * 250;
+      s.fy = 800;
       s.x = s.fx;
       s.y = s.fy;
     });
