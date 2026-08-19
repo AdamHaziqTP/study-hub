@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AuthStatus from "@/components/AuthStatus";
+import EmptySearchState, { EXAMPLE_QUERIES } from "./EmptySearchState";
 
 interface Study {
   pmid: string;
@@ -232,6 +233,27 @@ export default function HomeSearch() {
   };
 
   /**
+   * Task 19 — run a search from an example chip (empty-state / zero-results
+   * recovery). Same commit-to-URL behavior as `handleSearch` so the chip's
+   * query becomes the shared, Back-restorable URL `q`.
+   */
+  const handleExampleSearch = useCallback(
+    (term: string) => {
+      setQuery(term);
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("q", term);
+      router.push(`${pathname}?${params.toString()}`);
+      // If the chip's query is already the committed URL q (e.g. re-running a
+      // failed zero-result search), the q-change effect won't re-fire — search
+      // directly.
+      if (term === urlQuery) {
+        void runSearch(term);
+      }
+    },
+    [router, pathname, searchParams, urlQuery, runSearch]
+  );
+
+  /**
    * Task 17 — Load more: fetch the NEXT page (offset = current result count)
    * and append it. Page 2+ REUSES the already-translated query by sending it
    * back to `/api/ai-search` — the AI translation is never re-run.
@@ -406,6 +428,49 @@ export default function HomeSearch() {
         {error && (
           <div className="mb-8 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
             {error}
+          </div>
+        )}
+
+        {/* Task 19 — Empty state (onboarding): no search has been committed to
+            the URL yet. Shows what Study Hub is + clickable example questions
+            + a pointer to Library / Evidence Notebook, instead of a blank page. */}
+        {!urlQuery && !error && (
+          <EmptySearchState onExample={handleExampleSearch} />
+        )}
+
+        {/* Task 19 — Zero-results state: a search ran (urlQuery set) but PubMed
+            returned nothing. Distinct from the empty pre-search state above. */}
+        {urlQuery && !loading && !error && results.length === 0 && (
+          <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+            <p className="text-3xl" aria-hidden>
+              🔍
+            </p>
+            <h2 className="mt-3 text-xl font-bold text-gray-900">
+              No results found
+            </h2>
+            <p className="mt-2 text-gray-600 leading-relaxed">
+              Nothing came back for{" "}
+              <span className="font-mono text-gray-800 break-words">
+                {urlQuery}
+              </span>
+              . Try rephrasing, using simpler terms, or checking the
+              AI-translated query above — Study Hub{" "}
+              <span className="font-semibold">ranks, never filters</span>, so
+              if PubMed has no hits for this query, nothing is hidden.
+            </p>
+            <p className="mt-4 text-sm text-gray-500">Or try one of these:</p>
+            <div className="mt-3 flex flex-wrap justify-center gap-2">
+              {EXAMPLE_QUERIES.map((ex) => (
+                <button
+                  key={ex.query}
+                  type="button"
+                  onClick={() => handleExampleSearch(ex.query)}
+                  className="inline-flex items-center gap-1.5 border border-blue-200 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full text-sm font-medium hover:bg-blue-100 hover:border-blue-300 transition-colors"
+                >
+                  {ex.label} →
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
