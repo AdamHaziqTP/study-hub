@@ -143,11 +143,12 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
 
   // Ref to the Article content textarea, so a selection can be turned into a claim.
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  // Backdrop highlight layer — must scroll in lock-step with the textarea so
+  // highlights stay glued to the words.
+  const backdropRef = useRef<HTMLDivElement>(null);
   // Tracks the textarea's value + caret before each edit, so claim character
   // offsets can be shifted/kept in sync as the article changes.
   const beforeRef = useRef({ value: "", selStart: 0 });
-  // Scroll offset of the textarea, mirrored onto the backdrop highlight layer.
-  const [scrollTop, setScrollTop] = useState(0);
 
   // 1) Auth check + initial load (article, claims, links, saved studies).
   useEffect(() => {
@@ -861,30 +862,35 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
           </div>
           {/* In-place claim highlighting: a perfectly mirrored highlight layer
               sits behind the (transparent) textarea, so claims are highlighted
-              exactly where you type. */}
+              exactly where you type. Both layers use IDENTICAL metrics
+              (padding, font, line-height, wrap, scrollbar) so the highlights
+              line up with the words. */}
           <div className="relative w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 rounded-lg min-h-[420px] lg:flex-1 lg:min-h-0 overflow-hidden">
             <div
+              ref={backdropRef}
               aria-hidden="true"
-              className="absolute inset-0 overflow-hidden p-4 font-sans text-sm leading-relaxed whitespace-pre-wrap break-words text-transparent pointer-events-none"
+              className="absolute inset-0 overflow-y-auto p-4 font-sans text-sm leading-relaxed whitespace-pre-wrap break-words text-transparent pointer-events-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             >
-              <div style={{ transform: `translateY(${-scrollTop}px)` }}>
-                {renderHighlightRanges(
-                  draft.content,
-                  draft.claims.map((c) => ({ key: c.key, start: c.start, end: c.end }))
-                )}
-              </div>
+              {renderHighlightRanges(
+                draft.content,
+                draft.claims.map((c) => ({ key: c.key, start: c.start, end: c.end }))
+              )}
             </div>
             <textarea
               ref={contentRef}
               value={draft.content}
               onChange={(e) => handleContentChange(e.target.value, e.target.selectionStart)}
-              onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+              onScroll={(e) => {
+                if (backdropRef.current) {
+                  backdropRef.current.scrollTop = e.currentTarget.scrollTop;
+                }
+              }}
               onSelect={() =>
                 (beforeRef.current.selStart = contentRef.current?.selectionStart ?? 0)
               }
               rows={16}
               placeholder="Write your conclusion here — the reasoning that ties your claims together... Select a sentence and hit “Turn selection into a claim” to highlight it."
-              className="relative block w-full h-full min-h-[420px] bg-transparent p-4 font-sans text-sm leading-relaxed text-gray-800 dark:text-gray-200 focus:outline-none resize-none lg:min-h-0"
+              className="relative block w-full h-full min-h-[420px] bg-transparent p-4 font-sans text-sm leading-relaxed text-gray-800 dark:text-gray-200 focus:outline-none resize-none overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:min-h-0"
             />
           </div>
         </section>
