@@ -352,7 +352,7 @@ export default function StudyDetail({
                 ? ` · ${decodeEntities(study.publicationDate)}`
                 : ""}
             </p>
-            <p className="font-mono text-gray-500">PMID: {study.pmid}</p>
+            <p className="font-mono text-gray-500 dark:text-gray-400">PMID: {study.pmid}</p>
           </div>
         </header>
 
@@ -386,13 +386,13 @@ export default function StudyDetail({
         </div>
 
         {saveError && (
-          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+          <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-900 dark:text-red-400 text-sm">
             {saveError}
           </div>
         )}
 
         {librarySaveWarnings.length > 0 && (
-          <div className="mb-8 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm">
+          <div className="mb-8 p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/40 dark:border-amber-900 dark:text-amber-300 text-sm">
             Study saved, but some AI breakdowns could not be saved to the library:
             <ul className="list-disc ml-5 mt-1">
               {librarySaveWarnings.map((w, i) => (
@@ -435,7 +435,7 @@ export default function StudyDetail({
           </div>
 
           {simplificationState === "error" && (
-            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-900 dark:text-red-400 text-sm">
               Failed to generate the explanation.
               {simplificationError ? ` ${simplificationError}` : ""}
             </div>
@@ -448,21 +448,21 @@ export default function StudyDetail({
               <div className="h-3 w-full bg-gray-100 rounded mb-1.5" />
               <div className="h-3 w-full bg-gray-100 rounded mb-1.5" />
               <div className="h-3 w-3/4 bg-gray-100 rounded" />
-              <p className="text-sm text-gray-500 text-center pt-3">
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center pt-3">
                 Re-explaining the study in plain English...
               </p>
             </div>
           )}
 
           {simplificationState === "done" && simplification ? (
-            <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50">
+            <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50 dark:border-emerald-900 dark:bg-emerald-950/40">
               <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line">
                 {simplification.simplified_text}
               </p>
             </div>
           ) : simplificationState === "idle" ? (
             <div className="p-4 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-white dark:border-gray-600 dark:bg-gray-900">
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 A plain-English explanation of this study for a curious lifter —
                 what it tested, who was studied, and what the authors found —
                 will appear here.
@@ -492,7 +492,7 @@ export default function StudyDetail({
           </div>
 
           {contextState === "error" && (
-            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-900 dark:text-red-400 text-sm">
               Failed to generate the context.
               {contextError ? ` ${contextError}` : ""}
             </div>
@@ -511,7 +511,7 @@ export default function StudyDetail({
                   <div className="h-3 w-4/5 bg-gray-100 rounded" />
                 </div>
               ))}
-              <p className="text-sm text-gray-500 text-center pt-1">
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center pt-1">
                 Reading the study and extracting structured information...
               </p>
             </div>
@@ -554,7 +554,7 @@ export default function StudyDetail({
                 {context.limitations ? (
                   <p className="text-sm text-gray-800 dark:text-gray-200">{context.limitations}</p>
                 ) : (
-                  <p className="text-sm text-gray-400 italic">
+                  <p className="text-sm text-gray-400 dark:text-gray-500 italic">
                     None stated in the source.
                   </p>
                 )}
@@ -569,7 +569,7 @@ export default function StudyDetail({
                     {context.identified_limitations.map((item, i) => (
                       <div
                         key={i}
-                        className="rounded-lg bg-amber-50 border border-amber-200 p-3"
+                        className="rounded-lg bg-amber-50 border border-amber-200 p-3 dark:bg-amber-950/40 dark:border-amber-900"
                       >
                         <p className="text-sm text-gray-800 dark:text-gray-200">{item.limitation}</p>
                         <p className="text-xs text-amber-700 mt-1.5">
@@ -626,7 +626,7 @@ export default function StudyDetail({
           </div>
 
           {assessmentState === "error" && (
-            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-900 dark:text-red-400 text-sm">
               Failed to generate the assessment.
               {assessmentError ? ` ${assessmentError}` : ""}
             </div>
@@ -645,7 +645,7 @@ export default function StudyDetail({
                   <div className="h-3 w-4/5 bg-gray-100 rounded" />
                 </div>
               ))}
-              <p className="text-sm text-gray-500 text-center pt-1">
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center pt-1">
                 Explaining why the study's design, sample, and measurements matter...
               </p>
             </div>
@@ -677,14 +677,14 @@ export default function StudyDetail({
                 label="Measurement"
                 value={assessment.measurement_context}
               />
-              <p className="text-xs text-gray-500 italic pt-1">
+              <p className="text-xs text-gray-500 dark:text-gray-400 italic pt-1">
                 No credibility score — these are the factors to weigh when
                 judging how far this study can be applied.
               </p>
             </div>
           ) : assessmentState === "idle" ? (
             <div className="p-5 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-white dark:border-gray-600 dark:bg-gray-900">
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 This section will surface the factors that affect how broadly this
                 study can be interpreted - sample size, study design, population,
                 training status, duration, and measurement - with plain-language
@@ -709,7 +709,7 @@ export default function StudyDetail({
           </div>
 
           {assessmentState === "error" && (
-            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 dark:bg-red-950/40 dark:border-red-900 dark:text-red-400 text-sm">
               Failed to generate the training interpretation.
               {assessmentError ? ` ${assessmentError}` : ""}
             </div>
@@ -717,7 +717,7 @@ export default function StudyDetail({
 
           {assessmentState === "done" && assessment ? (
             <div className="space-y-3">
-              <div className="p-4 rounded-xl border border-amber-200 bg-amber-50">
+              <div className="p-4 rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-900 dark:bg-amber-950/40">
                 <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                   If this generalises, it might suggest...
                 </h3>
@@ -726,12 +726,12 @@ export default function StudyDetail({
                     {assessment.training_application}
                   </p>
                 ) : (
-                  <p className="text-sm text-gray-400 italic">
+                  <p className="text-sm text-gray-400 dark:text-gray-500 italic">
                     Not provided for this study.
                   </p>
                 )}
               </div>
-              <div className="p-4 rounded-xl border border-red-200 bg-red-50">
+              <div className="p-4 rounded-xl border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950/40">
                 <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                   What this does NOT mean
                 </h3>
@@ -740,19 +740,19 @@ export default function StudyDetail({
                     {assessment.training_cautions}
                   </p>
                 ) : (
-                  <p className="text-sm text-gray-400 italic">
+                  <p className="text-sm text-gray-400 dark:text-gray-500 italic">
                     Not provided for this study.
                   </p>
                 )}
               </div>
-              <p className="text-xs text-gray-500 italic">
+              <p className="text-xs text-gray-500 dark:text-gray-400 italic">
                 This is cautious interpretation by the AI, clearly separate from
                 what the study actually states — use it to think, not as advice.
               </p>
             </div>
           ) : assessmentState === "idle" ? (
             <div className="p-5 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-white dark:border-gray-600 dark:bg-gray-900">
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 This section will translate the findings into practical training
                 considerations - clearly labelled as <em>interpretation</em>, with
                 explicit cautions about what this study does <em>not</em> establish.
@@ -770,7 +770,7 @@ export default function StudyDetail({
             <StudyReferences studyId={studyId} />
           ) : (
             <div className="p-5 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-white dark:border-gray-600 dark:bg-gray-900">
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 Save this study to the library first — articles can only link
                 claims to studies that are saved.
               </p>
@@ -799,7 +799,7 @@ function SourceInfoBadge({ sourceInfo }: { sourceInfo: string }) {
         ? "AI read: abstract only"
         : "AI read: provided text";
   return (
-    <span className="text-xs font-semibold px-3 py-1 rounded-full bg-purple-100 text-purple-800">
+    <span className="text-xs font-semibold px-3 py-1 rounded-full bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300">
       {label}
     </span>
   );
@@ -809,13 +809,13 @@ function SourceInfoBadge({ sourceInfo }: { sourceInfo: string }) {
 function FieldRow({ label, value }: { label: string; value: string | number | null }) {
   return (
     <div className="flex flex-col gap-0.5">
-      <span className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+      <span className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
         {label}
       </span>
       {value !== null && value !== "" ? (
         <span className="text-sm text-gray-800 dark:text-gray-200">{value}</span>
       ) : (
-        <span className="text-sm text-gray-400 italic">Not stated in the source</span>
+        <span className="text-sm text-gray-400 dark:text-gray-500 italic">Not stated in the source</span>
       )}
     </div>
   );
@@ -846,7 +846,7 @@ function AssessmentFactor({ label, value }: { label: string; value: string | nul
       {value ? (
         <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">{value}</p>
       ) : (
-        <p className="text-sm text-gray-400 italic">Not provided.</p>
+        <p className="text-sm text-gray-400 dark:text-gray-500 italic">Not provided.</p>
       )}
     </div>
   );
