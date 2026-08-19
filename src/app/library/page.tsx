@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import AuthStatus from "@/components/AuthStatus";
+import StudyCard from "@/components/StudyCard";
 import { supabase } from "@/lib/supabase";
 
 /**
@@ -116,34 +117,10 @@ export default async function LibraryPage() {
             </p>
 
             <div className="flex flex-col gap-6">
+              {/* Task 20 — same shared <StudyCard> as the home search so the
+                  visited-links treatment is consistent across both pages. */}
               {studies.map((study) => (
-                <div
-                  key={study.pmid}
-                  className="border border-gray-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow bg-white"
-                >
-                  <Link href={`/study/${study.pmid}`}>
-                    <h2 className="text-xl font-semibold mb-2 text-gray-900 leading-snug hover:text-blue-700 transition-colors">
-                      {study.title}
-                    </h2>
-                  </Link>
-                  <div className="text-sm text-gray-500 mb-4 font-medium">
-                    {study.authors} •{" "}
-                    <span className="italic">{study.journal}</span> (
-                    {study.publicationDate?.slice(0, 4) ?? "Unknown year"}) •
-                    PMID: {study.pmid}
-                  </div>
-                  <p className="text-gray-700 text-sm line-clamp-3 mb-4 leading-relaxed">
-                    {study.abstract}
-                  </p>
-                  <div className="flex justify-end">
-                    <Link
-                      href={`/study/${study.pmid}`}
-                      className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors"
-                    >
-                      View Study →
-                    </Link>
-                  </div>
-                </div>
+                <StudyCard key={study.pmid} {...study} />
               ))}
             </div>
           </>
