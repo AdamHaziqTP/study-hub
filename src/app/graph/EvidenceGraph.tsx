@@ -90,20 +90,32 @@ const idOf = (v: string | GraphNode) => (typeof v === "string" ? v : v.id);
 /**
  * Filter the graph down to a single article: that article node, its claim
  * nodes, and the study nodes those claims link to (with only the matching
- * links). Returns a new object; link sources/targets are normalised to id
- * strings so they're safe to feed back into forceLink.
+ * links). Defaults to the FIRST article when no selection is given. Link
+ * sources/targets are normalised to id strings so they're safe for forceLink.
  */
 function filterGraph(
   graph: GraphData | null,
   selectedId: string
 ): GraphData | null {
   if (!graph) return null;
-  if (selectedId === "all") return graph;
 
-  const keep = new Set<string>([selectedId]);
+  let articleId = selectedId;
+  if (!articleId || articleId === "all") {
+    articleId = graph.nodes.find((n) => n.type === "article")?.id ?? "";
+  }
+  if (!articleId) {
+    return {
+      ...graph,
+      nodes: [],
+      links: [],
+      counts: { articles: 0, claims: 0, studies: 0, links: 0 },
+    };
+  }
+
+  const keep = new Set<string>([articleId]);
   const claimIds = new Set<string>();
   for (const link of graph.links) {
-    if (link.kind === "membership" && idOf(link.source) === selectedId) {
+    if (link.kind === "membership" && idOf(link.source) === articleId) {
       claimIds.add(idOf(link.target));
     }
   }
@@ -129,6 +141,70 @@ function filterGraph(
       links: links.length,
     },
   };
+}
+
+/**
+ * Rigid, perfectly straight org-chart layout. Locks every node's fx/fy (and
+ * x/y) so d3-force simply draws the links instantly with zero wobble:
+ *   - Article: centered at top (y=150).
+ *   - Claims: evenly spread across the width on the middle line (y=450).
+ *   - Studies: centered beneath their parent claim (y=750).
+ */
+function applyRigidLayout(nodes: GraphNode[], links: GraphLink[]) {
+  const article = nodes.find((n) => n.type === "article");
+  const claims = nodes.filter((n) => n.type === "claim");
+  const studies = nodes.filter((n) => n.type === "study");
+
+  if (article) {
+    article.fx = WIDTH / 2;
+    article.fy = 150;
+    article.x = WIDTH / 2;
+    article.y = 150;
+  }
+
+  const claimCount = claims.length;
+  claims.forEach((c, i) => {
+    c.fx = claimCount === 1 ? WIDTH / 2 : ((i + 1) * WIDTH) / (claimCount + 1);
+    c.fy = 450;
+    c.x = c.fx;
+    c.y = c.fy;
+  });
+  const claimFx = new Map(claims.map((c) => [c.id, c.fx ?? WIDTH / 2]));
+
+  // Group studies by their parent claim (via evidence links).
+  const studiesByClaim = new Map<string, GraphNode[]>();
+  for (const link of links) {
+    if (link.kind === "evidence") {
+      const cid = idOf(link.source);
+      const study = nodes.find((n) => n.id === idOf(link.target));
+      if (study) {
+        const arr = studiesByClaim.get(cid) ?? [];
+        arr.push(study);
+        studiesByClaim.set(cid, arr);
+      }
+    }
+  }
+  const spacing = 220;
+  for (const [cid, group] of studiesByClaim) {
+    const cx = claimFx.get(cid) ?? WIDTH / 2;
+    const n = group.length;
+    group.forEach((s, j) => {
+      const x = Math.max(50, Math.min(WIDTH - 50, cx + (j - (n - 1) / 2) * spacing));
+      s.fx = x;
+      s.fy = 750;
+      s.x = x;
+      s.y = 750;
+    });
+  }
+  // Any study not grouped (shouldn't happen after filtering) still gets a row.
+  studies
+    .filter((s) => s.fx == null)
+    .forEach((s, i) => {
+      s.fx = 50 + (i + 1) * 220;
+      s.fy = 750;
+      s.x = s.fx;
+      s.y = s.fy;
+    });
 }
 
 /**
@@ -158,13 +234,29 @@ export default function EvidenceGraph() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [graph, setGraph] = useState<GraphData | null>(null);
-  // Per-article filter: "all" or a specific article id.
-  const [selectedArticleId, setSelectedArticleId] = useState<string>("all");
-  // The graph actually rendered/simulated — filtered to one article when set.
+  // Per-article filter — always a specific article (no "all articles").
+  const [selectedArticleId, setSelectedArticleId] = useState<string>("");
+  // The graph actually rendered/simulated — filtered to a single article.
   const filtered = useMemo(
     () => filterGraph(graph, selectedArticleId),
     [graph, selectedArticleId]
   );
+  // Apply the rigid org-chart coordinates (fx/fy) to the filtered nodes.
+  const laidOut = useMemo(() => {
+    if (!filtered) return null;
+    applyRigidLayout(filtered.nodes, filtered.links);
+    return filtered;
+  }, [filtered]);
+
+  // Default the dropdown to the FIRST article once the graph loads (or if the
+  // current selection no longer exists).
+  useEffect(() => {
+    const articles = graph?.nodes.filter((n) => n.type === "article") ?? [];
+    if (articles.length === 0) return;
+    if (!selectedArticleId || !articles.some((a) => a.id === selectedArticleId)) {
+      setSelectedArticleId(articles[0].id);
+    }
+  }, [graph, selectedArticleId]);
 
   // Pan/zoom view state: translate (x,y) + scale (k). Zoom keeps the point
   // under the cursor fixed; left-drag pans. Supports zooming into any spot.
@@ -470,17 +562,19 @@ export default function EvidenceGraph() {
   // Force a re-render on every simulation tick (positions are mutated in place).
   const [, setTick] = useState(0);
 
-  // 3) Run the d3-force simulation whenever the (filtered) graph changes.
+  // 3) Run the d3-force simulation whenever the (laid-out, single-article)
+  // graph changes. Nodes are fx/fy-locked, so this just draws the links
+  // instantly with no wobble.
   useEffect(() => {
-    if (!filtered || filtered.nodes.length === 0) return;
+    if (!laidOut || laidOut.nodes.length === 0) return;
 
     // Clean up any previous simulation.
     simulationRef.current?.stop();
 
-    const simulation = forceSimulation(filtered.nodes as GraphNode[])
+    const simulation = forceSimulation(laidOut.nodes as GraphNode[])
       .force(
         "link",
-        forceLink(filtered.links as GraphLink[])
+        forceLink(laidOut.links as GraphLink[])
           .id((d) => (d as GraphNode).id)
           .distance((link) => {
             const l = link as GraphLink;
@@ -491,22 +585,14 @@ export default function EvidenceGraph() {
             return l.kind === "membership" ? 0.7 : 0.35;
           })
       )
-      // Uncapped physics: strong repulsion on an (effectively) infinite canvas —
-      // no walls, so the graph blooms outward into a clean, spacious tree.
       .force("charge", forceManyBody<GraphNode>().strength(-2000))
       .force(
         "collide",
-        // Keep the bubbles respecting personal space (radius + 20 padding) so
-        // the claims/studies fan out side-by-side along their layer.
         forceCollide<GraphNode>()
           .radius((d) => d.radius + 20)
           .iterations(3)
       )
-      // Weak horizontal anchor so the sprawling graph doesn't drift entirely off
-      // the initial camera view.
       .force("x", forceX<GraphNode>(WIDTH / 2).strength(0.05))
-      // Strict Y-layers: a strong forceY snaps every node to its tier —
-      // Articles y=0, Claims y=400, Studies y=800 — for a clean top-down tree.
       .force(
         "y",
         forceY<GraphNode>(0)
@@ -516,15 +602,12 @@ export default function EvidenceGraph() {
           )
       )
       .on("tick", () => {
-        // No bounding-box clamp — nodes move freely on the (near-)infinite
-        // canvas; the SVG view is clipped by overflow-hidden and reachable via
-        // pan/zoom.
+        // Fixed nodes stay at fx/fy — just re-render.
         setTick((t) => t + 1);
       });
 
     simulationRef.current = simulation;
 
-    // Optional: settle near-stable after a while to save CPU.
     const settleTimer = window.setTimeout(() => {
       simulation.alphaTarget(0).stop();
     }, 12000);
@@ -534,7 +617,7 @@ export default function EvidenceGraph() {
       simulation.stop();
       simulationRef.current = null;
     };
-  }, [filtered]);
+  }, [laidOut]);
 
   const handleSignIn = useCallback(async () => {
     const supabase = createClient();
@@ -588,7 +671,7 @@ export default function EvidenceGraph() {
   }
 
   // ---- Empty state ----
-  if (!loading && filtered && filtered.nodes.length === 0) {
+  if (!loading && laidOut && laidOut.nodes.length === 0) {
     return (
       <div className="border border-dashed border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 rounded-xl p-12 text-center">
         <p className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
@@ -617,7 +700,7 @@ export default function EvidenceGraph() {
         </div>
       )}
 
-      {filtered && filtered.nodes.length > 0 && (
+      {laidOut && laidOut.nodes.length > 0 && (
         <>
           {/* Legend */}
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3">
@@ -651,14 +734,14 @@ export default function EvidenceGraph() {
               )
             )}
             <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
-              {filtered.counts.articles} article
-              {filtered.counts.articles === 1 ? "" : "s"} ·{" "}
-              {filtered.counts.claims} claim
-              {filtered.counts.claims === 1 ? "" : "s"} ·{" "}
-              {filtered.counts.studies} study
-              {filtered.counts.studies === 1 ? "" : "s"} ·{" "}
-              {filtered.counts.links} link
-              {filtered.counts.links === 1 ? "" : "s"}
+              {laidOut.counts.articles} article
+              {laidOut.counts.articles === 1 ? "" : "s"} ·{" "}
+              {laidOut.counts.claims} claim
+              {laidOut.counts.claims === 1 ? "" : "s"} ·{" "}
+              {laidOut.counts.studies} study
+              {laidOut.counts.studies === 1 ? "" : "s"} ·{" "}
+              {laidOut.counts.links} link
+              {laidOut.counts.links === 1 ? "" : "s"}
             </span>
           </div>
 
@@ -671,7 +754,7 @@ export default function EvidenceGraph() {
                 onChange={(e) => setSelectedArticleId(e.target.value)}
                 className="px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[240px]"
               >
-                <option value="all">All Articles</option>
+                <option value="">Select an article…</option>
                 {(graph?.nodes.filter((n) => n.type === "article") ?? []).map(
                   (n) => (
                     <option key={n.id} value={n.id}>
@@ -735,7 +818,7 @@ export default function EvidenceGraph() {
             >
             {/* Edges — straight lines between the layers. */}
             <g>
-              {filtered.links.map((link) => {
+              {laidOut.links.map((link) => {
                 const s = link.source as GraphNode;
                 const t = link.target as GraphNode;
                 if (!s?.x || !t?.x || s.y == null || t.y == null) return null;
@@ -759,7 +842,7 @@ export default function EvidenceGraph() {
 
             {/* Nodes */}
             <g>
-              {filtered.nodes.map((node) => (
+              {laidOut.nodes.map((node) => (
                 <g
                   key={node.id}
                   transform={`translate(${node.x ?? 0}, ${node.y ?? 0})`}
