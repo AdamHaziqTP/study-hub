@@ -431,14 +431,14 @@ export default function EvidenceGraph() {
           .id((d) => (d as GraphNode).id)
           .distance((link) => {
             const l = link as GraphLink;
-            return l.kind === "membership" ? 90 : 170;
+            return l.kind === "membership" ? 320 : 400;
           })
           .strength((link) => {
             const l = link as GraphLink;
             return l.kind === "membership" ? 0.7 : 0.35;
           })
       )
-      .force("charge", forceManyBody<GraphNode>().strength(-520))
+      .force("charge", forceManyBody<GraphNode>().strength(-2500))
       .force(
         "collide",
         // Strict collision using each node's dynamically measured radius so the
@@ -637,7 +637,7 @@ export default function EvidenceGraph() {
           <svg
             ref={svgRef}
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-            className="w-full h-auto border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-700 dark:bg-gray-800 select-none cursor-grab"
+            className="w-full h-auto border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-700 dark:bg-gray-800 select-none cursor-grab overflow-visible"
             role="img"
             aria-label="Interactive evidence graph: articles, claims, and studies connected by relationship-colored edges"
           >
