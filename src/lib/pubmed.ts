@@ -33,21 +33,41 @@ function buildParams(extra: Record<string, string>) {
   return new URLSearchParams({ tool: TOOL, email: EMAIL, ...extra });
 }
 
-/** Convert a raw PMID list from ESearch into objects. */
-export async function searchPubMed(
+/**
+ * A single "page" of ranked PubMed results, plus the total hit count NCBI
+ * reported for the term. `totalResults` drives the Load-more / end-of-results
+ * UI (Task 17): keep fetching while `results.length < totalResults`.
+ */
+export interface SearchPageResult {
+  data: PubMedStudy[];
+  /** Total number of hits NCBI reports for the term (0 when unknown). */
+  totalResults: number;
+}
+
+/**
+ * Paginated search page (Task 17): ESearch with `retmax` + `retstart` (offset
+ * into the same ranked Best-Match list) → EFetch → parsed studies, plus the
+ * total hit count. `retstart` lets "Load more" fetch the NEXT page without
+ * re-fetching the top results — and because the callers reuse the exact same
+ * query string, it never re-runs the AI translation deep in the list.
+ */
+export async function searchPubMedPage(
   term: string,
-  retmax = 10
-): Promise<PubMedStudy[]> {
+  retmax = 10,
+  retstart = 0
+): Promise<SearchPageResult> {
   // ---- Step 1: ESearch -> PMIDs ----
   // sort=relevance uses NCBI's "Best Match" algorithm (the same one used on
   // pubmed.ncbi.nlm.nih.gov) — it ranks results by relevance without ever
-  // hiding lower-ranked ones ("Rank, don't filter").
+  // hiding lower-ranked ones ("Rank, don't filter"). `retstart` offsets into
+  // that ranked list for pagination.
   const searchRes = await fetch(
     `${NCBI_BASE}/esearch.fcgi?${buildParams({
       db: "pubmed",
       term,
       retmode: "json",
       retmax: String(retmax),
+      retstart: String(retstart),
       sort: "relevance",
     })}`
   );
@@ -56,8 +76,10 @@ export async function searchPubMed(
   }
 
   const searchData = await searchRes.json();
-  const idList: string[] = searchData.esearchresult?.idlist ?? [];
-  if (idList.length === 0) return [];
+  const esResult = searchData.esearchresult;
+  const idList: string[] = esResult?.idlist ?? [];
+  const totalResults = Number(esResult?.count) || 0;
+  if (idList.length === 0) return { data: [], totalResults };
 
   // ---- Step 2: EFetch -> raw XML ----
   const fetchRes = await fetch(
@@ -72,7 +94,17 @@ export async function searchPubMed(
   }
 
   const xmlText = await fetchRes.text();
-  return parsePubmedXml(xmlText);
+  return { data: parsePubmedXml(xmlText), totalResults };
+}
+
+/** Convert a raw PMID list from ESearch into objects (single page, no metadata). */
+export async function searchPubMed(
+  term: string,
+  retmax = 10,
+  retstart = 0
+): Promise<PubMedStudy[]> {
+  const { data } = await searchPubMedPage(term, retmax, retstart);
+  return data;
 }
 
 /** Fetch a single study by PMID, live from NCBI. Falls back cleanly if not found. */
@@ -299,11 +331,16 @@ function monthNumber(value: string): string | null {
   return months[cleaned.slice(0, 3).toLowerCase()] ?? null;
 }
 
-/** Search handler wrapper - keeps route files thin and consistent. */
+/**
+ * Search handler wrapper - keeps route files thin and consistent.
+ * Supports `retmax` + `retstart` (offset) and returns the total hit count so
+ * clients can detect the end of the ranked list (Task 17 pagination).
+ */
 export async function handlePubmedSearch(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const term = searchParams.get("term");
   const retmaxParam = searchParams.get("retmax");
+  const retstartParam = searchParams.get("retstart");
 
   if (!term) {
     return NextResponse.json({ error: "Missing search term" }, { status: 400 });
@@ -311,8 +348,13 @@ export async function handlePubmedSearch(request: NextRequest) {
 
   try {
     const retmax = retmaxParam ? parseInt(retmaxParam, 10) : 10;
-    const data = await searchPubMed(term, Math.min(Math.max(retmax, 1), 50));
-    return NextResponse.json({ data });
+    const retstart = retstartParam ? Math.max(parseInt(retstartParam, 10) || 0, 0) : 0;
+    const page = await searchPubMedPage(
+      term,
+      Math.min(Math.max(retmax, 1), 50),
+      retstart
+    );
+    return NextResponse.json({ data: page.data, totalResults: page.totalResults });
   } catch (error) {
     console.error("PubMed search failed:", error);
     return NextResponse.json(

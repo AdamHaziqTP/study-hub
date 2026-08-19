@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import { translateToPubMedQuery } from "@/lib/ai";
-import { searchPubMed } from "@/lib/pubmed";
+import { searchPubMedPage } from "@/lib/pubmed";
 
 /**
  * POST /api/ai-search
@@ -26,8 +26,18 @@ import { searchPubMed } from "@/lib/pubmed";
  * visible "AI-translated query" disclosure telling the user exactly what was
  * actually searched.
  *
+ * Task 17 — Pagination / Load More: the body also accepts `retmax` + `retstart`,
+ * and the client REUSES the already-translated query for page 2+ by sending
+ * it back as `translatedQuery` (with `translated` + `explanation`). When
+ * `translatedQuery` is present the endpoint SKIPS DeepSeek entirely and
+ * directly offsets into the same ranked list — the AI is never re-run deep in
+ * the results. `totalResults` is returned so the UI knows when to stop.
+ *
  * Body (JSON):
- *   { "question": "how many times a week should I train?", "retmax": 10 }
+ *   { "question": "...", "retmax": 10, "retstart": 0 }
+ *   // page 2+ (same question + reused translated query):
+ *   { "question": "...", "translatedQuery": "(training frequency[tiab])...",
+ *     "translated": true, "explanation": "...", "retmax": 10, "retstart": 10 }
  *
  * Response:
  *   {
@@ -35,15 +45,28 @@ import { searchPubMed } from "@/lib/pubmed";
  *     "translated": true,
  *     "translatedQuery": "(training frequency[tiab]) AND (resistance training[Mesh])",
  *     "explanation": "..." | null,
- *     "originalTerm": "how many times a week should I train?"
+ *     "originalTerm": "how many times a week should I train?",
+ *     "totalResults": 238
  *   }
  */
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { question, retmax } = body as {
+    const {
+      question,
+      retmax,
+      retstart,
+      translatedQuery,
+      translated,
+      explanation,
+    } = body as {
       question?: string;
       retmax?: number;
+      retstart?: number;
+      /** Already-translated PubMed query from the first page (reused, never re-translated). */
+      translatedQuery?: string;
+      translated?: boolean;
+      explanation?: string | null;
     };
 
     const term = question?.trim();
@@ -55,17 +78,40 @@ export async function POST(request: NextRequest) {
     }
 
     const limit = Math.min(Math.max(retmax ?? 10, 1), 50);
+    const offset = Math.max(retstart ?? 0, 0);
+
+    // Run a page against a concrete PubMed query and shape the response.
+    const runPage = async (query: string) => {
+      const page = await searchPubMedPage(query, limit, offset);
+      return NextResponse.json({
+        data: page.data,
+        translated: translated ?? !!translatedQuery,
+        translatedQuery: query,
+        explanation: explanation ?? null,
+        originalTerm: term,
+        totalResults: page.totalResults,
+      });
+    };
+
+    // Task 17 — page 2+: the client sends back the query it already translated
+    // on page 1. Reuse it DIRECTLY (skip DeepSeek entirely) and offset into the
+    // same ranked list. This guarantees "never re-translate deep in the list".
+    if (translatedQuery && translatedQuery.trim()) {
+      const data = await runPage(translatedQuery.trim());
+      return data;
+    }
 
     // Step 1: try the AI translation (server-side; DeepSeek key here only).
     try {
-      const { query, explanation } = await translateToPubMedQuery(term);
-      const data = await searchPubMed(query, limit);
+      const { query, explanation: freshExplanation } = await translateToPubMedQuery(term);
+      const page = await searchPubMedPage(query, limit, offset);
       return NextResponse.json({
-        data,
+        data: page.data,
         translated: true,
         translatedQuery: query,
-        explanation,
+        explanation: freshExplanation,
         originalTerm: term,
+        totalResults: page.totalResults,
       });
     } catch (translationError) {
       // Fallback: existing term search. The UI still gets a transparent
@@ -74,13 +120,14 @@ export async function POST(request: NextRequest) {
         "AI query translation failed, falling back to raw term search:",
         translationError
       );
-      const data = await searchPubMed(term, limit);
+      const page = await searchPubMedPage(term, limit, offset);
       return NextResponse.json({
-        data,
+        data: page.data,
         translated: false,
         translatedQuery: term,
         explanation: null,
         originalTerm: term,
+        totalResults: page.totalResults,
       });
     }
   } catch (error) {

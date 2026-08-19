@@ -20,7 +20,12 @@ interface AiSearchResponse {
   translatedQuery: string;
   explanation: string | null;
   originalTerm: string;
+  /** Total NCBI hit count for the query (Task 17 — drives Load-more / end-of-results). */
+  totalResults?: number;
 }
+
+/** Number of studies per page (Task 17 — "Load more" appends this many). */
+const PAGE_SIZE = 10;
 
 /**
  * Session-scoped search results cache, keyed by the committed URL query (`q`).
@@ -33,6 +38,10 @@ interface AiSearchResponse {
  * re-searching on every Back nav. It lives at module scope (not component
  * state) so it survives client-side navigations where <HomeSearch> unmounts
  * and remounts (e.g. out to a study page and back).
+ *
+ * Task 17 — Pagination: the cached payload also stores `totalResults`, and
+ * "Load more" APPENDS to the cached `data` array (deduped by PMID), so a Back
+ * nav restores every page loaded so far — not just the first 10.
  */
 const resultsCache = new Map<string, AiSearchResponse>();
 
@@ -55,6 +64,14 @@ const resultsCache = new Map<string, AiSearchResponse>();
  * the module-level cache above when available — no DeepSeek re-run — and only
  * fetches fresh results (with a fresh AI translation) when the query has never
  * been seen in this session.
+ *
+ * Task 17 — Pagination / Load More: instead of a hardcoded 10-study limit, a
+ * "Load more" button below the results fetches the NEXT page (`retstart` =
+ * current result count) and APPENDS it to the existing list. Page 2+ reuses
+ * the already-translated query by sending `translatedQuery` back to
+ * `/api/ai-search` — the AI is NEVER re-run deep in the results. Loading /
+ * error / end-of-results states are handled, and every appended page is
+ * reconciled into the Task 16 `resultsCache`.
  */
 export default function HomeSearch() {
   const router = useRouter();
@@ -70,6 +87,14 @@ export default function HomeSearch() {
   const [results, setResults] = useState<Study[]>(initialCached?.data ?? []);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Task 17 — pagination state: total NCBI hits + Load-more loading/error.
+  const [totalResults, setTotalResults] = useState<number | null>(
+    initialCached?.totalResults ?? null
+  );
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const loadingMoreRef = useRef(false);
 
   // Disclosure state: what PubMed was actually searched (set after every search).
   const [translatedQuery, setTranslatedQuery] = useState<string | null>(
@@ -87,16 +112,27 @@ export default function HomeSearch() {
   const searchIdRef = useRef(0);
   const appliedQueryRef = useRef<string | null>(null);
 
+  /**
+   * Append `incoming` to `existing`, skipping PMIDs already shown (cheap
+   * insurance against any overlap between ranked pages).
+   */
+  const mergeStudies = useCallback((existing: Study[], incoming: Study[]) => {
+    const seen = new Set(existing.map((s) => s.pmid));
+    return [...existing, ...incoming.filter((s) => !seen.has(s.pmid))];
+  }, []);
+
   /** Run a full search (fetch → cache → apply state) for the given term. */
   const runSearch = useCallback(async (term: string) => {
     const id = ++searchIdRef.current;
+    loadingMoreRef.current = false;
     setLoading(true);
     setError(null);
+    setLoadMoreError(null);
     try {
       const res = await fetch("/api/ai-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: term }),
+        body: JSON.stringify({ question: term, retmax: PAGE_SIZE, retstart: 0 }),
       });
       const json = await res.json();
       if (id !== searchIdRef.current) return; // a newer search superseded us
@@ -106,11 +142,13 @@ export default function HomeSearch() {
         setTranslatedQuery(null);
         setWasTranslated(false);
         setExplanation(null);
+        setTotalResults(null);
         return;
       }
       const payload = json as AiSearchResponse;
       resultsCache.set(term, payload);
       setResults(payload.data || []);
+      setTotalResults(payload.totalResults ?? null);
       setTranslatedQuery(payload.translatedQuery ?? term);
       setWasTranslated(payload.translated === true);
       setExplanation(payload.explanation ?? null);
@@ -122,6 +160,7 @@ export default function HomeSearch() {
       setTranslatedQuery(null);
       setWasTranslated(false);
       setExplanation(null);
+      setTotalResults(null);
     } finally {
       if (id === searchIdRef.current) setLoading(false);
     }
@@ -139,11 +178,15 @@ export default function HomeSearch() {
     if (!term) {
       // No committed search in the URL: reset to the initial empty state.
       appliedQueryRef.current = "";
+      loadingMoreRef.current = false;
       setResults([]);
       setTranslatedQuery(null);
       setWasTranslated(false);
       setExplanation(null);
       setError(null);
+      setTotalResults(null);
+      setLoadingMore(false);
+      setLoadMoreError(null);
       return;
     }
 
@@ -153,11 +196,15 @@ export default function HomeSearch() {
     if (cached) {
       // Back nav / revisit: restore WITHOUT re-running the AI translation.
       appliedQueryRef.current = term;
+      loadingMoreRef.current = false;
       setResults(cached.data || []);
+      setTotalResults(cached.totalResults ?? null);
       setTranslatedQuery(cached.translatedQuery ?? term);
       setWasTranslated(cached.translated === true);
       setExplanation(cached.explanation ?? null);
       setError(null);
+      setLoadingMore(false);
+      setLoadMoreError(null);
       return;
     }
 
@@ -183,6 +230,89 @@ export default function HomeSearch() {
       void runSearch(trimmed);
     }
   };
+
+  /**
+   * Task 17 — Load more: fetch the NEXT page (offset = current result count)
+   * and append it. Page 2+ REUSES the already-translated query by sending it
+   * back to `/api/ai-search` — the AI translation is never re-run.
+   */
+  const loadMore = useCallback(async () => {
+    const term = appliedQueryRef.current;
+    if (!term) return;
+    if (loadingMoreRef.current || loading) return;
+
+    const searchIdAtStart = searchIdRef.current;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    setLoadMoreError(null);
+    try {
+      const res = await fetch("/api/ai-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: term,
+          retmax: PAGE_SIZE,
+          retstart: results.length,
+          // Reuse the first page's translation — never re-translate page 2+.
+          translatedQuery: translatedQuery,
+          translated: wasTranslated,
+          explanation: explanation,
+        }),
+      });
+      const json = await res.json();
+      if (
+        searchIdRef.current !== searchIdAtStart ||
+        appliedQueryRef.current !== term
+      ) {
+        return; // a newer search superseded this load-more
+      }
+      if (!res.ok) {
+        setLoadMoreError(json.error || "Failed to load more results");
+        return;
+      }
+      const payload = json as AiSearchResponse;
+      const merged = mergeStudies(results, payload.data || []);
+      setResults(merged);
+      if (typeof payload.totalResults === "number") {
+        setTotalResults(payload.totalResults);
+      }
+
+      // Reconcile the Task 16 session cache with the appended page, so a Back
+      // nav restores every page loaded so far.
+      const cached = resultsCache.get(term);
+      if (cached) {
+        resultsCache.set(term, {
+          ...cached,
+          data: merged,
+          totalResults: payload.totalResults ?? cached.totalResults,
+        });
+      } else {
+        resultsCache.set(term, {
+          data: merged,
+          translated: wasTranslated,
+          translatedQuery: translatedQuery ?? term,
+          explanation: explanation ?? null,
+          originalTerm: term,
+          totalResults: payload.totalResults,
+        });
+      }
+    } catch (error) {
+      console.error("Load more failed", error);
+      if (searchIdRef.current !== searchIdAtStart) return;
+      setLoadMoreError("Failed to load more results. Please try again.");
+    } finally {
+      if (searchIdRef.current === searchIdAtStart) {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
+    }
+  }, [results, translatedQuery, wasTranslated, explanation, loading, mergeStudies]);
+
+  // Task 17 — end-of-results detection: keep loading while the total hit count
+  // is still unknown, or while we've shown fewer studies than NCBI reported.
+  const hasMore =
+    results.length > 0 &&
+    (totalResults === null || results.length < totalResults);
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans">
@@ -302,6 +432,44 @@ export default function HomeSearch() {
             </div>
           ))}
         </div>
+
+        {/* Task 17 — Load More / pagination control */}
+        {results.length > 0 && (
+          <div className="mt-8 text-center">
+            {hasMore ? (
+              <>
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore || loading}
+                  className="bg-white border-2 border-blue-600 text-blue-700 px-8 py-3 rounded-lg font-semibold hover:bg-blue-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                >
+                  {loadingMore ? "Loading more results..." : "Load more"}
+                </button>
+                {loadingMore && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Fetching the next page and appending it to your results…
+                  </p>
+                )}
+                {loadMoreError && (
+                  <p className="mt-2 text-sm text-red-600">{loadMoreError}</p>
+                )}
+                {totalResults !== null && (
+                  <p className="mt-2 text-xs text-gray-500">
+                    Showing {results.length} of {totalResults} results
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-gray-500">
+                You've reached the end of the results
+                {totalResults !== null && (
+                  <> — all {totalResults} studies are shown above</>
+                )}
+                .
+              </p>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
