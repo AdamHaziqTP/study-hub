@@ -18,6 +18,13 @@ import { useSavedStudies } from "@/lib/useSavedStudies";
  * it. It reflects already-saved state (filled icon when the PMID is in the
  * `studies` library), disables while saving, and shows an inline error on
  * failure. Gated on `loaded` so the icon never causes an SSR/hydration mismatch.
+ *
+ * Task 22 — Library management: the bookmark is now a toggle. When a study is
+ * already saved (filled), clicking it REMOVES it from the Library via
+ * `DELETE /api/study/[pmid]` (outline again), so the card shows both the
+ * "Already in Library" state (filled bookmark + "Remove from Library" title)
+ * and the remove action. `onRemoved` lets a parent list (e.g. the Library page)
+ * drop the card from view after a successful remove.
  */
 export interface StudyCardProps {
   pmid: string;
@@ -26,6 +33,8 @@ export interface StudyCardProps {
   journal: string;
   publicationDate: string | null;
   abstract: string;
+  /** Optional: called after this study is removed from the Library. */
+  onRemoved?: (pmid: string) => void;
 }
 
 export default function StudyCard({
@@ -35,18 +44,19 @@ export default function StudyCard({
   journal,
   publicationDate,
   abstract,
+  onRemoved,
 }: StudyCardProps) {
   const { visited, hydrated, markVisited } = useVisitedStudies();
-  const { saved, loaded, markSaved } = useSavedStudies();
+  const { saved, loaded, markSaved, markUnsaved } = useSavedStudies();
   const isVisited = hydrated && visited.has(pmid);
   const isSaved = loaded && saved.has(pmid);
 
-  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleSave = async () => {
-    if (isSaved || saving) return;
-    setSaving(true);
+    if (isSaved || busy) return;
+    setBusy(true);
     setSaveError(null);
     try {
       const res = await fetch("/api/save-study", {
@@ -71,7 +81,38 @@ export default function StudyCard({
       console.error("Quick-save failed", err);
       setSaveError("Couldn't save to Library. Please try again.");
     } finally {
-      setSaving(false);
+      setBusy(false);
+    }
+  };
+
+  const handleRemove = async () => {
+    if (!isSaved || busy) return;
+    setBusy(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/study/${encodeURIComponent(pmid)}`, {
+        method: "DELETE",
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setSaveError(json.error || "Couldn't remove from Library");
+        return;
+      }
+      markUnsaved(pmid);
+      onRemoved?.(pmid);
+    } catch (err) {
+      console.error("Remove-from-library failed", err);
+      setSaveError("Couldn't remove from Library. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleBookmark = () => {
+    if (isSaved) {
+      void handleRemove();
+    } else {
+      void handleSave();
     }
   };
 
@@ -103,12 +144,12 @@ export default function StudyCard({
           )}
           <button
             type="button"
-            onClick={handleSave}
-            disabled={isSaved || saving}
-            title={isSaved ? "Saved to Library" : "Save to Library"}
-            aria-label={isSaved ? "Saved to Library" : "Save to Library"}
+            onClick={handleBookmark}
+            disabled={busy}
+            title={isSaved ? "Remove from Library" : "Save to Library"}
+            aria-label={isSaved ? "Remove from Library" : "Save to Library"}
             className={`mt-1 p-1.5 rounded-md transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 ${
-              saving
+              busy
                 ? "text-blue-300 cursor-wait"
                 : isSaved
                 ? "text-blue-600"

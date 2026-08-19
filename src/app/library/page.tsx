@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import AuthStatus from "@/components/AuthStatus";
-import StudyCard from "@/components/StudyCard";
+import LibraryList from "./LibraryList";
 import { supabase } from "@/lib/supabase";
 
 /**
@@ -95,35 +95,11 @@ export default async function LibraryPage() {
           <div className="border border-red-200 bg-red-50 rounded-xl p-6 text-red-700 text-sm">
             Failed to load the library. Please try again later.
           </div>
-        ) : studies.length === 0 ? (
-          <div className="border border-dashed border-gray-300 bg-white rounded-xl p-12 text-center">
-            <p className="text-lg font-semibold text-gray-700 mb-2">
-              No saved studies yet
-            </p>
-            <p className="text-sm text-gray-500 mb-6">
-              Go search PubMed and save studies to build your library.
-            </p>
-            <Link
-              href="/"
-              className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-            >
-              Search PubMed →
-            </Link>
-          </div>
         ) : (
-          <>
-            <p className="text-sm text-gray-500 mb-6">
-              {studies.length} saved {studies.length === 1 ? "study" : "studies"}
-            </p>
-
-            <div className="flex flex-col gap-6">
-              {/* Task 20 — same shared <StudyCard> as the home search so the
-                  visited-links treatment is consistent across both pages. */}
-              {studies.map((study) => (
-                <StudyCard key={study.pmid} {...study} />
-              ))}
-            </div>
-          </>
+          // Task 22 — LibraryList is a client list: it shows the count + cards,
+          // and "Remove from Library" (StudyCard onRemoved) drops a card from
+          // view + updates the count without a server re-fetch.
+          <LibraryList studies={studies} />
         )}
       </div>
     </div>

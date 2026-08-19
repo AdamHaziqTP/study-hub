@@ -69,5 +69,16 @@ export function useSavedStudies() {
     });
   }, []);
 
-  return { saved, loaded, markSaved };
+  /** Optimistically drop a study from the saved set after a successful remove. */
+  const markUnsaved = useCallback((pmid: string) => {
+    setSaved((prev) => {
+      if (!prev.has(pmid)) return prev;
+      const next = new Set(prev);
+      next.delete(pmid);
+      savedCache = next;
+      return next;
+    });
+  }, []);
+
+  return { saved, loaded, markSaved, markUnsaved };
 }
