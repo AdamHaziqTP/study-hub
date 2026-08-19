@@ -54,6 +54,15 @@ export interface DraftClaim {
   id: string | null;
   text: string;
   links: DraftLink[];
+  /**
+   * Character offsets into the article content that this claim covers. The
+   * article is the single source of truth — the claim's text derives from
+   * `content.slice(start, end)` so it stays in sync as the user edits.
+   * null when the offsets aren't known (e.g. loaded claims whose text couldn't
+   * be located in the content).
+   */
+  start: number | null;
+  end: number | null;
 }
 
 export interface ArticleDraft {

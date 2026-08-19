@@ -431,7 +431,7 @@ export default function EvidenceGraph() {
           .id((d) => (d as GraphNode).id)
           .distance((link) => {
             const l = link as GraphLink;
-            return l.kind === "membership" ? 320 : 400;
+            return l.kind === "membership" ? 500 : 620;
           })
           .strength((link) => {
             const l = link as GraphLink;
@@ -441,10 +441,10 @@ export default function EvidenceGraph() {
       .force("charge", forceManyBody<GraphNode>().strength(-2500))
       .force(
         "collide",
-        // Strict collision using each node's dynamically measured radius so the
-        // bubbles themselves never overlap.
+        // Strict collision with a massive buffer (+60) so the large bubbles keep
+        // well apart and cannot overlap.
         forceCollide<GraphNode>()
-          .radius((d) => d.radius + 14)
+          .radius((d) => d.radius + 60)
           .iterations(3)
       )
       // Hierarchical stratification (top-down tree): articles pinned toward
@@ -463,7 +463,12 @@ export default function EvidenceGraph() {
         forceX<GraphNode>(WIDTH / 2).strength(0.05)
       )
       .on("tick", () => {
-        // Re-render by letting React read the mutated node/link positions.
+        // Constrain nodes to a bounding box so nothing flies outside the SVG
+        // and overlaps the page UI/headers; also re-render.
+        for (const n of graph.nodes) {
+          n.x = clamp(n.x ?? WIDTH / 2, 0, WIDTH);
+          n.y = clamp(n.y ?? HEIGHT / 2, 0, HEIGHT);
+        }
         setTick((t) => t + 1);
       });
 
@@ -676,7 +681,7 @@ export default function EvidenceGraph() {
                 const dx = t.x - s.x;
                 const dy = t.y - s.y;
                 const len = Math.hypot(dx, dy) || 1;
-                const curve = isEvidence ? 0.24 : 0.14;
+                const curve = isEvidence ? 0.5 : 0.35;
                 const cx = mx - (dy / len) * len * curve;
                 const cy = my + (dx / len) * len * curve;
                 const d = `M ${s.x} ${s.y} Q ${cx} ${cy} ${t.x} ${t.y}`;

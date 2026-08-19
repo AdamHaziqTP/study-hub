@@ -15,7 +15,6 @@ import {
   type EvidenceRelationship,
   type LinkableStudy,
 } from "@/lib/articles";
-import { renderClaimHighlights } from "@/lib/renderClaimHighlights";
 
 interface ArticleEditorProps {
   articleId: string;
@@ -65,8 +64,57 @@ const ALIGNMENT_LABELS: Record<AlignmentVerdict, string> = {
  * and evidence links against what was loaded (INSERT new, UPDATE changed,
  * DELETE removed). The studies table stays public-read only.
  */
-export default function ArticleEditor({ articleId }: ArticleEditorProps) {
-  const router = useRouter();
+
+interface HighlightRange {
+  key: string;
+  start: number | null;
+  end: number | null;
+}
+
+/**
+ * Offset-based highlight renderer for the article backdrop: wraps the text at
+ * each claim's [start, end] range in a <mark>, so the highlight always reflects
+ * the CURRENT article text at that range (as the user edits). Non-overlapping
+ * ranges are merged left-to-right.
+ */
+function renderHighlightRanges(
+  content: string,
+  ranges: HighlightRange[]
+): React.ReactNode[] {
+  const valid = ranges
+    .filter(
+      (r): r is HighlightRange & { start: number; end: number } =>
+        r.start != null && r.end != null && r.end > r.start
+    )
+    .sort((a, b) => a.start - b.start);
+  if (valid.length === 0) return [content];
+
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  for (const r of valid) {
+    if (r.start < cursor) continue;
+    if (r.start > cursor) nodes.push(content.slice(cursor, r.start));
+    nodes.push(
+      <mark
+        key={r.key}
+        className="bg-amber-200 text-gray-900 dark:bg-amber-500/30 dark:text-amber-100 rounded px-0.5 py-px cursor-pointer hover:bg-amber-300 dark:hover:bg-amber-500/50"
+        title="Claim — click to see its studies"
+        onClick={() =>
+          document
+            .getElementById(`claim-${r.key}`)
+            ?.scrollIntoView({ behavior: "smooth", block: "start" })
+        }
+      >
+        {content.slice(r.start, r.end)}
+      </mark>
+    );
+    cursor = r.end;
+  }
+  nodes.push(content.slice(cursor));
+  return nodes;
+}
+
+export default function ArticleEditor({ articleId }: ArticleEditorProps) {  const router = useRouter();
   const [loadState, setLoadState] = useState<LoadState>("auth");
   const [userId, setUserId] = useState<string | null>(null);
   const [draft, setDraft] = useState<ArticleDraft>({
@@ -97,6 +145,11 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
 
   // Ref to the Article content textarea, so a selection can be turned into a claim.
   const contentRef = useRef<HTMLTextAreaElement>(null);
+  // Tracks the textarea's value + caret before each edit, so claim character
+  // offsets can be shifted/kept in sync as the article changes.
+  const beforeRef = useRef({ value: "", selStart: 0 });
+  // Scroll offset of the textarea, mirrored onto the backdrop highlight layer.
+  const [scrollTop, setScrollTop] = useState(0);
 
   // 1) Auth check + initial load (article, claims, links, saved studies).
   useEffect(() => {
@@ -223,15 +276,25 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
           if (match) arr.push(match);
           linksByClaimId.set(row.claim_id, arr);
         }
-        const claimsWithLinks: DraftClaim[] = claims.map((c) => ({
-          key:
-            typeof crypto !== "undefined" && "randomUUID" in crypto
-              ? crypto.randomUUID()
-              : `${c.id}-${Math.random()}`,
-          id: c.id,
-          text: c.text,
-          links: linksByClaimId.get(c.id) ?? [],
-        }));
+        const loadedContent = (articleRow.content as string | null) ?? "";
+        // Locate each loaded claim's text inside the article so its highlight
+        // offsets are known (article is the single source of truth).
+        const claimsWithLinks: DraftClaim[] = claims.map((c) => {
+          const idx = loadedContent.indexOf(c.text);
+          return {
+            key:
+              typeof crypto !== "undefined" && "randomUUID" in crypto
+                ? crypto.randomUUID()
+                : `${c.id}-${Math.random()}`,
+            id: c.id,
+            text: c.text,
+            links: linksByClaimId.get(c.id) ?? [],
+            start: idx >= 0 ? idx : null,
+            end: idx >= 0 ? idx + c.text.length : null,
+          };
+        });
+
+        beforeRef.current = { value: loadedContent, selStart: 0 };
 
         setSavedStudies(
           ((studyRows ?? []) as unknown as Array<{ studies: LinkableStudy | null }>)
@@ -241,7 +304,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
         setDraft({
           id: articleRow.id as string,
           title: (articleRow.title as string) ?? "",
-          content: (articleRow.content as string | null) ?? "",
+          content: loadedContent,
           claims: claimsWithLinks,
         });
         setLoadState("ready");
@@ -302,6 +365,8 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
       id: null,
       text: initialText,
       links: [],
+      start: null,
+      end: null,
     };
     patchClaims((claims) => [...claims, claim]);
     setSearch("");
@@ -311,24 +376,50 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
   const addClaimFromSelection = () => {
     const el = contentRef.current;
     if (!el) return;
-    const text = el.value
-      .slice(el.selectionStart ?? 0, el.selectionEnd ?? 0)
-      .trim();
-    if (!text) return;
-    addClaim(text);
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    const text = el.value.slice(start, end).trim();
+    if (!text || start === end) return;
+    const claim: DraftClaim = {
+      key: newKey(),
+      id: null,
+      text,
+      links: [],
+      start,
+      end,
+    };
+    patchClaims((claims) => [...claims, claim]);
+    setSearch("");
   };
 
-  const updateClaimText = (key: string, text: string) => {
-    patchClaims((claims) =>
-      claims.map((c) => (c.key === key ? { ...c, text } : c))
-    );
-    // The claim text changed — a previously computed alignment verdict is stale.
-    setAlignmentByClaim((map) => {
-      if (!map[key]) return map;
-      const next = { ...map };
-      delete next[key];
-      return next;
+  /**
+   * Handle an article-content edit: update the value and keep each claim's
+   * character offsets in sync so highlights stay put and reflect the text.
+   * Edits before a claim shift its range; edits inside a claim grow/shrink it.
+   */
+  const handleContentChange = (newValue: string, newSelStart: number) => {
+    const before = beforeRef.current;
+    const delta = newValue.length - before.value.length;
+
+    const newClaims = draft.claims.map((claim) => {
+      if (claim.start == null || claim.end == null) return claim;
+      let start = claim.start;
+      let end = claim.end;
+      if (newSelStart <= start) {
+        start += delta;
+        end += delta;
+      } else if (newSelStart > start && newSelStart <= end) {
+        end += delta;
+      }
+      start = Math.max(0, Math.min(start, newValue.length));
+      end = Math.max(start, Math.min(end, newValue.length));
+      return { ...claim, start, end, text: newValue.slice(start, end) };
     });
+
+    beforeRef.current = { value: newValue, selStart: newSelStart };
+    setDraft((d) => ({ ...d, content: newValue, claims: newClaims }));
+    // The claim text (source of truth) changed — alignment verdicts are stale.
+    setAlignmentByClaim({});
   };
 
   const removeClaim = (key: string) => {
@@ -770,32 +861,34 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
               ✂ Turn selection into a claim
             </button>
           </div>
-          <textarea
-            ref={contentRef}
-            value={draft.content}
-            onChange={(e) => updateDraft({ content: e.target.value })}
-            rows={16}
-            placeholder="Write your conclusion here — the reasoning that ties your claims together..."
-            className="w-full border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 rounded-lg p-4 text-sm leading-relaxed text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 min-h-[420px] resize-y lg:flex-1 lg:min-h-0 lg:resize-none"
-          />
-
-          {/* Live claim highlights — shows exactly where each claim sits in the
-              article as you write (turn a selection into a claim to highlight). */}
-          {draft.claims.length > 0 && (
-            <div className="mt-4 rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50/40 dark:bg-amber-950/20 p-3 lg:mt-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300 mb-2">
-                Claim highlights
-              </p>
-              <div className="text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line text-sm">
-                {draft.content
-                  ? renderClaimHighlights(
-                      draft.content,
-                      draft.claims.map((c) => ({ id: c.key, text: c.text }))
-                    )
-                  : "Start writing, then select a sentence and hit “Turn selection into a claim”."}
+          {/* In-place claim highlighting: a perfectly mirrored highlight layer
+              sits behind the (transparent) textarea, so claims are highlighted
+              exactly where you type. */}
+          <div className="relative w-full border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 rounded-lg min-h-[420px] lg:flex-1 lg:min-h-0 overflow-hidden">
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 overflow-hidden p-4 font-sans text-sm leading-relaxed whitespace-pre-wrap break-words text-transparent pointer-events-none"
+            >
+              <div style={{ transform: `translateY(${-scrollTop}px)` }}>
+                {renderHighlightRanges(
+                  draft.content,
+                  draft.claims.map((c) => ({ key: c.key, start: c.start, end: c.end }))
+                )}
               </div>
             </div>
-          )}
+            <textarea
+              ref={contentRef}
+              value={draft.content}
+              onChange={(e) => handleContentChange(e.target.value, e.target.selectionStart)}
+              onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
+              onSelect={() =>
+                (beforeRef.current.selStart = contentRef.current?.selectionStart ?? 0)
+              }
+              rows={16}
+              placeholder="Write your conclusion here — the reasoning that ties your claims together... Select a sentence and hit “Turn selection into a claim” to highlight it."
+              className="relative block w-full h-full min-h-[420px] bg-transparent p-4 font-sans text-sm leading-relaxed text-gray-800 dark:text-gray-200 focus:outline-none resize-none lg:min-h-0"
+            />
+          </div>
         </section>
 
         {/* Claims — independently scrollable sidebar (article stays fixed on the left) */}
@@ -843,13 +936,13 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
                     </button>
                   </div>
 
-                  <textarea
-                    value={claim.text}
-                    onChange={(e) => updateClaimText(claim.key, e.target.value)}
-                    rows={2}
-                    placeholder="e.g. Overhead triceps extensions produce greater long-head hypertrophy than neutral-position extensions."
-                    className="w-full border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 rounded-lg p-3 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y mb-4"
-                  />
+                  {/* Read-only: the article text is the single source of truth.
+                      The claim text derives from the article highlight range. */}
+                  <div className="rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-3 text-sm text-gray-800 dark:text-gray-200 leading-relaxed mb-4">
+                    {claim.start != null && claim.end != null
+                      ? draft.content.slice(claim.start, claim.end)
+                      : claim.text}
+                  </div>
 
                   {/* Alignment check (Task 9) */}
                   <div className="mb-4">
@@ -869,7 +962,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
                             ? "Link at least one study to check alignment"
                             : "Check whether this claim accurately represents its linked studies"
                         }
-                        className="text-xs font-semibold border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="text-xs font-semibold border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white text-gray-700 hover:bg-gray-100 dark:bg-gray-700 dark:text-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         {alignmentByClaim[claim.key]?.status === "loading"
                           ? "Checking..."
