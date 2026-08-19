@@ -362,7 +362,7 @@ export default function HomeSearch() {
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
           <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">
-            Evidence Hub
+            SBL Hub
           </h1>
           <SiteNav />
         </div>

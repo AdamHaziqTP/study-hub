@@ -365,14 +365,19 @@ export default function EvidenceGraph() {
       zoomAt(px, py, e.deltaY < 0 ? 1.15 : 1 / 1.15);
     };
 
+    let down = false;
     let lastX = 0;
     let lastY = 0;
     const onDown = (e: MouseEvent) => {
+      down = true;
       lastX = e.clientX;
       lastY = e.clientY;
       draggingRef.current = false;
     };
     const onMove = (e: MouseEvent) => {
+      // Only pan while the button is actually held down (a click-drag) — never
+      // just from moving the mouse.
+      if (!down) return;
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
       if (Math.abs(dx) + Math.abs(dy) > 3) {
@@ -386,6 +391,7 @@ export default function EvidenceGraph() {
       }
     };
     const onUp = () => {
+      down = false;
       // Let the node onClick (fired on mouseup) see the drag was a pan.
       setTimeout(() => {
         draggingRef.current = false;
