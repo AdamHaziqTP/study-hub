@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/browser";
@@ -85,6 +85,52 @@ const measureLabel = (type: NodeType, text: string) => {
 const clamp = (v: number, min: number, max: number) =>
   Math.min(max, Math.max(min, v));
 
+const idOf = (v: string | GraphNode) => (typeof v === "string" ? v : v.id);
+
+/**
+ * Filter the graph down to a single article: that article node, its claim
+ * nodes, and the study nodes those claims link to (with only the matching
+ * links). Returns a new object; link sources/targets are normalised to id
+ * strings so they're safe to feed back into forceLink.
+ */
+function filterGraph(
+  graph: GraphData | null,
+  selectedId: string
+): GraphData | null {
+  if (!graph) return null;
+  if (selectedId === "all") return graph;
+
+  const keep = new Set<string>([selectedId]);
+  const claimIds = new Set<string>();
+  for (const link of graph.links) {
+    if (link.kind === "membership" && idOf(link.source) === selectedId) {
+      claimIds.add(idOf(link.target));
+    }
+  }
+  for (const id of claimIds) keep.add(id);
+  for (const link of graph.links) {
+    if (link.kind === "evidence" && claimIds.has(idOf(link.source))) {
+      keep.add(idOf(link.target));
+    }
+  }
+
+  const nodes = graph.nodes.filter((n) => keep.has(n.id));
+  const links = graph.links
+    .filter((l) => keep.has(idOf(l.source)) && keep.has(idOf(l.target)))
+    .map((l) => ({ ...l, source: idOf(l.source), target: idOf(l.target) }));
+  return {
+    ...graph,
+    nodes,
+    links,
+    counts: {
+      articles: nodes.filter((n) => n.type === "article").length,
+      claims: nodes.filter((n) => n.type === "claim").length,
+      studies: nodes.filter((n) => n.type === "study").length,
+      links: links.length,
+    },
+  };
+}
+
 /**
  * EvidenceGraph — Task 8.
  *
@@ -112,6 +158,13 @@ export default function EvidenceGraph() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [graph, setGraph] = useState<GraphData | null>(null);
+  // Per-article filter: "all" or a specific article id.
+  const [selectedArticleId, setSelectedArticleId] = useState<string>("all");
+  // The graph actually rendered/simulated — filtered to one article when set.
+  const filtered = useMemo(
+    () => filterGraph(graph, selectedArticleId),
+    [graph, selectedArticleId]
+  );
 
   // Pan/zoom view state: translate (x,y) + scale (k). Zoom keeps the point
   // under the cursor fixed; left-drag pans. Supports zooming into any spot.
@@ -417,17 +470,17 @@ export default function EvidenceGraph() {
   // Force a re-render on every simulation tick (positions are mutated in place).
   const [, setTick] = useState(0);
 
-  // 3) Run the d3-force simulation whenever the graph is (re)loaded.
+  // 3) Run the d3-force simulation whenever the (filtered) graph changes.
   useEffect(() => {
-    if (!graph || graph.nodes.length === 0) return;
+    if (!filtered || filtered.nodes.length === 0) return;
 
     // Clean up any previous simulation.
     simulationRef.current?.stop();
 
-    const simulation = forceSimulation(graph.nodes as GraphNode[])
+    const simulation = forceSimulation(filtered.nodes as GraphNode[])
       .force(
         "link",
-        forceLink(graph.links as GraphLink[])
+        forceLink(filtered.links as GraphLink[])
           .id((d) => (d as GraphNode).id)
           .distance((link) => {
             const l = link as GraphLink;
@@ -443,20 +496,21 @@ export default function EvidenceGraph() {
       .force("charge", forceManyBody<GraphNode>().strength(-2000))
       .force(
         "collide",
-        // Keep the bubbles respecting personal space (radius + 20 padding).
+        // Keep the bubbles respecting personal space (radius + 20 padding) so
+        // the claims/studies fan out side-by-side along their layer.
         forceCollide<GraphNode>()
           .radius((d) => d.radius + 20)
           .iterations(3)
       )
       // Weak horizontal anchor so the sprawling graph doesn't drift entirely off
-      // the initial camera view; the SVG frame is just a clipped lens (overflow
-      // hidden) and the user pans/zooms to explore the larger canvas.
+      // the initial camera view.
       .force("x", forceX<GraphNode>(WIDTH / 2).strength(0.05))
-      // Wide hierarchical tiers so lateral line-crossings are minimised.
+      // Strict Y-layers: a strong forceY snaps every node to its tier —
+      // Articles y=0, Claims y=400, Studies y=800 — for a clean top-down tree.
       .force(
         "y",
         forceY<GraphNode>(0)
-          .strength(0.25)
+          .strength(0.8)
           .y((d) =>
             d.type === "article" ? 0 : d.type === "claim" ? 400 : 800
           )
@@ -480,7 +534,7 @@ export default function EvidenceGraph() {
       simulation.stop();
       simulationRef.current = null;
     };
-  }, [graph]);
+  }, [filtered]);
 
   const handleSignIn = useCallback(async () => {
     const supabase = createClient();
@@ -534,7 +588,7 @@ export default function EvidenceGraph() {
   }
 
   // ---- Empty state ----
-  if (!loading && graph && graph.nodes.length === 0) {
+  if (!loading && filtered && filtered.nodes.length === 0) {
     return (
       <div className="border border-dashed border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 rounded-xl p-12 text-center">
         <p className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
@@ -563,7 +617,7 @@ export default function EvidenceGraph() {
         </div>
       )}
 
-      {graph && graph.nodes.length > 0 && (
+      {filtered && filtered.nodes.length > 0 && (
         <>
           {/* Legend */}
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3">
@@ -597,18 +651,36 @@ export default function EvidenceGraph() {
               )
             )}
             <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
-              {graph.counts.articles} article
-              {graph.counts.articles === 1 ? "" : "s"} ·{" "}
-              {graph.counts.claims} claim
-              {graph.counts.claims === 1 ? "" : "s"} ·{" "}
-              {graph.counts.studies} study
-              {graph.counts.studies === 1 ? "" : "s"} ·{" "}
-              {graph.counts.links} link
-              {graph.counts.links === 1 ? "" : "s"}
+              {filtered.counts.articles} article
+              {filtered.counts.articles === 1 ? "" : "s"} ·{" "}
+              {filtered.counts.claims} claim
+              {filtered.counts.claims === 1 ? "" : "s"} ·{" "}
+              {filtered.counts.studies} study
+              {filtered.counts.studies === 1 ? "" : "s"} ·{" "}
+              {filtered.counts.links} link
+              {filtered.counts.links === 1 ? "" : "s"}
             </span>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 mb-2">
+            {/* Per-article filter */}
+            <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <span className="font-semibold uppercase tracking-wide">Filter:</span>
+              <select
+                value={selectedArticleId}
+                onChange={(e) => setSelectedArticleId(e.target.value)}
+                className="px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-sm text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[240px]"
+              >
+                <option value="all">All Articles</option>
+                {(graph?.nodes.filter((n) => n.type === "article") ?? []).map(
+                  (n) => (
+                    <option key={n.id} value={n.id}>
+                      {n.label}
+                    </option>
+                  )
+                )}
+              </select>
+            </label>
             <button
               onClick={() => zoomBy(1.25)}
               className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-600 text-sm font-semibold text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
@@ -661,32 +733,20 @@ export default function EvidenceGraph() {
             <g
               transform={`translate(${view.x} ${view.y}) scale(${view.k})`}
             >
-            {/* Edges — quadratic bezier paths that sweep between nodes instead
-                of straight lines cutting through the graph. */}
+            {/* Edges — straight lines between the layers. */}
             <g>
-              {graph.links.map((link) => {
+              {filtered.links.map((link) => {
                 const s = link.source as GraphNode;
                 const t = link.target as GraphNode;
                 if (!s?.x || !t?.x || s.y == null || t.y == null) return null;
                 const isEvidence = link.kind === "evidence";
-
-                // Control point: midpoint of the two nodes, nudged along the
-                // perpendicular so the edge arcs out from the straight line.
-                const mx = (s.x + t.x) / 2;
-                const my = (s.y + t.y) / 2;
-                const dx = t.x - s.x;
-                const dy = t.y - s.y;
-                const len = Math.hypot(dx, dy) || 1;
-                const curve = isEvidence ? 0.5 : 0.35;
-                const cx = mx - (dy / len) * len * curve;
-                const cy = my + (dx / len) * len * curve;
-                const d = `M ${s.x} ${s.y} Q ${cx} ${cy} ${t.x} ${t.y}`;
-
                 return (
-                  <path
+                  <line
                     key={link.id}
-                    d={d}
-                    fill="none"
+                    x1={s.x}
+                    y1={s.y}
+                    x2={t.x}
+                    y2={t.y}
                     stroke={link.color}
                     strokeWidth={isEvidence ? 2.5 : 1.5}
                     strokeOpacity={isEvidence ? 1 : 0.45}
@@ -699,7 +759,7 @@ export default function EvidenceGraph() {
 
             {/* Nodes */}
             <g>
-              {graph.nodes.map((node) => (
+              {filtered.nodes.map((node) => (
                 <g
                   key={node.id}
                   transform={`translate(${node.x ?? 0}, ${node.y ?? 0})`}
