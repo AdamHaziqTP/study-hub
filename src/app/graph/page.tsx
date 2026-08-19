@@ -54,6 +54,61 @@ export default function GraphPage() {
           </div>
         </div>
 
+        {/* Task 28 — Evidence Graph explanation: a plain-English onboarding
+            blurb so a first-time visitor understands what the graph is, what
+            the colors mean, and how to populate it. */}
+        <section className="mb-8 rounded-xl border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">
+            What is this graph?
+          </h2>
+          <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
+            Your Evidence Graph maps how the conclusions in your{" "}
+            <span className="font-medium">articles</span> connect to the{" "}
+            <span className="font-medium">studies</span> you've saved. Each
+            article contains <span className="font-medium">claims</span>, and
+            each claim links to the studies it draws on — the link is colored
+            by whether that evidence{" "}
+            <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+              supports
+            </span>
+            ,{" "}
+            <span className="font-semibold text-red-700 dark:text-red-400">
+              contradicts
+            </span>
+            , is{" "}
+            <span className="font-semibold text-amber-700 dark:text-amber-400">
+              mixed
+            </span>
+            , or is{" "}
+            <span className="font-semibold text-slate-700 dark:text-slate-300">
+              contextual
+            </span>{" "}
+            to that claim. Click any node to open the article editor or study
+            page.
+          </p>
+          <ul className="mt-3 text-sm text-gray-600 dark:text-gray-400 list-disc ml-5 space-y-1">
+            <li>
+              It's private to you — only your own articles, claims, and saved
+              studies appear (you may need to{" "}
+              <Link
+                href="/articles"
+                className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+              >
+                sign in
+              </Link>{" "}
+              to see it).
+            </li>
+            <li>
+              Start by saving studies from search, then write an article and
+              link claims to them in the editor.
+            </li>
+            <li>
+              Layout is computed live with force-directed physics — drag the
+              nodes to explore.
+            </li>
+          </ul>
+        </section>
+
         <EvidenceGraph />
       </div>
     </div>
