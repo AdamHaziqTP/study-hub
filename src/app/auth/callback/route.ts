@@ -5,7 +5,8 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 /**
  * GET /auth/callback
  *
- * GitHub OAuth redirect target. Supabase's PKCE flow lands here with:
+ * OAuth redirect target (GitHub AND Google, Task 27). Supabase's PKCE flow
+ * lands here with:
  *   ?code=...     the one-time authorization code
  *   ?next=...     the URL the user should return to (default "/")
  *
@@ -13,6 +14,10 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
  * code verifier cookie is sent with this request automatically), which
  * writes the session cookies onto the response via setAll. The user is then
  * redirected back to `next`.
+ *
+ * This route is provider-agnostic — `exchangeCodeForSession` accepts the
+ * one-time code from any enabled OAuth provider — so no provider-specific
+ * handling is needed here.
  *
  * This route MUST NOT be cached (it sets auth cookies); @supabase/ssr
  * sets the appropriate Cache-Control headers via Response.cookies.
