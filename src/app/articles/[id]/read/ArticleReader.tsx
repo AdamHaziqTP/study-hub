@@ -39,6 +39,54 @@ interface ReaderClaim {
 
 type LoadState = "auth" | "loading" | "ready" | "notfound" | "error";
 
+/**
+ * Split the article content into React nodes, wrapping every occurrence of a
+ * claim's text in a highlighted <mark> so the reader can see which sentences
+ * are claims (and click one to jump to its linked studies in the sidebar).
+ * Claims whose text isn't found verbatim are simply not highlighted.
+ */
+function renderContentWithClaims(
+  content: string,
+  claims: ReaderClaim[]
+): React.ReactNode[] {
+  const matches: { start: number; end: number; claim: ReaderClaim }[] = [];
+  for (const claim of claims) {
+    const text = claim.text.trim();
+    if (!text) continue;
+    let idx = content.indexOf(text);
+    while (idx !== -1) {
+      matches.push({ start: idx, end: idx + text.length, claim });
+      idx = content.indexOf(text, idx + text.length);
+    }
+  }
+  if (matches.length === 0) return [content];
+
+  matches.sort((a, b) => a.start - b.start);
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  for (const m of matches) {
+    if (m.start < cursor) continue; // skip overlaps / duplicates
+    if (m.start > cursor) nodes.push(content.slice(cursor, m.start));
+    nodes.push(
+      <mark
+        key={`${m.claim.id}-${m.start}`}
+        className="bg-amber-200 text-gray-900 dark:bg-amber-500/30 dark:text-amber-100 rounded px-0.5 py-px cursor-pointer hover:bg-amber-300 dark:hover:bg-amber-500/50"
+        title={`Linked claim — click to see its studies`}
+        onClick={() =>
+          document
+            .getElementById(`claim-${m.claim.id}`)
+            ?.scrollIntoView({ behavior: "smooth", block: "start" })
+        }
+      >
+        {content.slice(m.start, m.end)}
+      </mark>
+    );
+    cursor = m.end;
+  }
+  if (cursor < content.length) nodes.push(content.slice(cursor));
+  return nodes;
+}
+
 export default function ArticleReader({ articleId }: { articleId: string }) {
   const [loadState, setLoadState] = useState<LoadState>("auth");
   const [title, setTitle] = useState("");
@@ -168,95 +216,101 @@ export default function ArticleReader({ articleId }: { articleId: string }) {
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 overflow-x-clip">
-      <div className="max-w-3xl mx-auto p-8">
-        <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
+      <div className="max-w-6xl mx-auto p-8 lg:h-screen lg:flex lg:flex-col">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
           <Link
             href="/articles"
             className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
           >
             ← My Articles
           </Link>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <Link
+              href={`/articles/${articleId}`}
+              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-blue-700 transition-colors"
+            >
+              Edit this article
+            </Link>
             <AuthStatus />
             <ThemeToggle />
           </div>
         </div>
 
-        <article className="mb-10">
-          <h1 className="text-3xl font-bold leading-tight mb-6 dark:text-gray-100">
-            {title}
-          </h1>
-          <div className="text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line text-base">
-            {content || "No content yet."}
-          </div>
-        </article>
+        <h1 className="text-3xl font-bold leading-tight mb-6 dark:text-gray-100 shrink-0">
+          {title}
+        </h1>
 
-        {/* Claims + their linked studies */}
-        <section>
-          <h2 className="text-lg font-bold mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
-            Claims &amp; evidence
-          </h2>
-          {claims.length === 0 ? (
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              No claims yet.
-            </p>
-          ) : (
-            <div className="space-y-6">
-              {claims.map((claim, i) => (
-                <div
-                  key={claim.id}
-                  className="p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
-                >
-                  <p className="text-sm font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">
-                    Claim {i + 1}
-                  </p>
-                  <p className="text-base text-gray-900 dark:text-gray-100 leading-relaxed mb-4">
-                    "{claim.text}"
-                  </p>
-                  {claim.links.length === 0 ? (
-                    <p className="text-xs text-gray-400 dark:text-gray-500 italic">
-                      No studies linked.
-                    </p>
-                  ) : (
-                    <div className="space-y-2">
-                      {claim.links.map((link) => (
-                        <div
-                          key={link.id}
-                          className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3"
-                        >
-                          <Link
-                            href={`/study/${link.study.pmid}`}
-                            className="min-w-0"
-                          >
-                            <p className="text-sm font-medium text-gray-800 dark:text-gray-200 hover:text-blue-700 dark:hover:text-blue-400 line-clamp-2">
-                              {link.study.title}
-                            </p>
-                            <p className="text-xs text-gray-400 font-mono mt-0.5">
-                              PMID: {link.study.pmid}
-                            </p>
-                          </Link>
-                          <span
-                            className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${RELATIONSHIP_COLORS[link.relationship]}`}
-                          >
-                            {RELATIONSHIP_LABELS[link.relationship]}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-5 gap-8 overflow-y-auto lg:overflow-hidden">
+          {/* Article (left) — full height, independently scrollable */}
+          <article className="lg:col-span-3 lg:h-full lg:min-h-0 lg:overflow-y-auto lg:pr-2">
+            <div className="text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line text-base pr-1">
+              {content ? renderContentWithClaims(content, claims) : "No content yet."}
             </div>
-          )}
-        </section>
+            <p className="mt-6 text-xs text-gray-400 dark:text-gray-500">
+              Highlighted sentences are claims — click one to jump to its linked
+              studies in the sidebar.
+            </p>
+          </article>
 
-        <div className="mt-10 text-center">
-          <Link
-            href={`/articles/${articleId}`}
-            className="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
-          >
-            Edit this article
-          </Link>
+          {/* Claims (right) — independently scrollable sidebar */}
+          <aside className="lg:col-span-2 lg:h-full lg:min-h-0 lg:flex lg:flex-col">
+            <h2 className="text-lg font-bold mb-4 pb-2 border-b border-gray-200 dark:border-gray-800 shrink-0">
+              Claims &amp; evidence
+            </h2>
+            <div className="lg:flex-1 lg:min-h-0 lg:overflow-y-auto lg:pr-1 space-y-6">
+              {claims.length === 0 ? (
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  No claims yet.
+                </p>
+              ) : (
+                claims.map((claim, i) => (
+                  <div
+                    id={`claim-${claim.id}`}
+                    key={claim.id}
+                    className="p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 scroll-mt-4"
+                  >
+                    <p className="text-sm font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400 mb-1">
+                      Claim {i + 1}
+                    </p>
+                    <p className="text-base text-gray-900 dark:text-gray-100 leading-relaxed mb-4">
+                      "{claim.text}"
+                    </p>
+                    {claim.links.length === 0 ? (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 italic">
+                        No studies linked.
+                      </p>
+                    ) : (
+                      <div className="space-y-2">
+                        {claim.links.map((link) => (
+                          <div
+                            key={link.id}
+                            className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 p-3"
+                          >
+                            <Link
+                              href={`/study/${link.study.pmid}`}
+                              className="min-w-0"
+                            >
+                              <p className="text-sm font-medium text-gray-800 dark:text-gray-200 hover:text-blue-700 dark:hover:text-blue-400 line-clamp-2">
+                                {link.study.title}
+                              </p>
+                              <p className="text-xs text-gray-400 font-mono mt-0.5">
+                                PMID: {link.study.pmid}
+                              </p>
+                            </Link>
+                            <span
+                              className={`text-xs font-semibold px-2.5 py-1 rounded-full shrink-0 ${RELATIONSHIP_COLORS[link.relationship]}`}
+                            >
+                              {RELATIONSHIP_LABELS[link.relationship]}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </aside>
         </div>
       </div>
     </div>
