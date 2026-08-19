@@ -112,12 +112,25 @@ export default function EvidenceGraph() {
   const [error, setError] = useState<string | null>(null);
   const [graph, setGraph] = useState<GraphData | null>(null);
 
-  // Zoom (k = scale factor). Wheel + the +/- buttons zoom around the SVG
-  // center; Reset returns to 100%.
-  const [zoomK, setZoomK] = useState(1);
+  // Pan/zoom view state: translate (x,y) + scale (k). Zoom keeps the point
+  // under the cursor fixed; left-drag pans. Supports zooming into any spot.
+  const [view, setView] = useState({ x: 0, y: 0, k: 1 });
   const svgRef = useRef<SVGSVGElement>(null);
-  const zoomBy = (factor: number) => setZoomK((k) => clamp(k * factor, 0.4, 3));
-  const resetZoom = () => setZoomK(1);
+  const draggingRef = useRef(false);
+
+  /** Zoom by `factor` while keeping the world point at (px, py) under the cursor. */
+  const zoomAt = useCallback((px: number, py: number, factor: number) => {
+    setView((v) => {
+      const k = clamp(v.k * factor, 0.4, 4);
+      const wx = (px - v.x) / v.k;
+      const wy = (py - v.y) / v.k;
+      return { k, x: px - wx * k, y: py - wy * k };
+    });
+  }, []);
+
+  // +/- buttons zoom toward the centre of the viewport.
+  const zoomBy = (factor: number) => zoomAt(WIDTH / 2, HEIGHT / 2, factor);
+  const resetZoom = () => setView({ x: 0, y: 0, k: 1 });
 
   // Simulation instance persists across renders; only re-created when the
   // loaded graph changes (or the auth user changes).
@@ -338,19 +351,61 @@ export default function EvidenceGraph() {
     if (userId) loadGraph();
   }, [userId, loadGraph]);
 
-  // Wheel-to-zoom on the SVG (native listener so preventDefault works). Attached
-  // once the graph is loaded and the SVG is actually in the DOM (deps on graph).
+  // Wheel-to-zoom-at-cursor + left-drag-to-pan on the SVG (native listeners so
+  // preventDefault works). Attached once the graph is loaded / SVG is mounted.
   useEffect(() => {
     const el = svgRef.current;
     if (!el) return;
+
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-      setZoomK((k) => clamp(k * factor, 0.4, 3));
+      const rect = el.getBoundingClientRect();
+      const px = ((e.clientX - rect.left) / rect.width) * WIDTH;
+      const py = ((e.clientY - rect.top) / rect.height) * HEIGHT;
+      zoomAt(px, py, e.deltaY < 0 ? 1.15 : 1 / 1.15);
     };
+
+    let lastX = 0;
+    let lastY = 0;
+    const onDown = (e: MouseEvent) => {
+      lastX = e.clientX;
+      lastY = e.clientY;
+      draggingRef.current = false;
+    };
+    const onMove = (e: MouseEvent) => {
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      if (Math.abs(dx) + Math.abs(dy) > 3) {
+        draggingRef.current = true;
+        const rect = el.getBoundingClientRect();
+        const scaleX = WIDTH / rect.width;
+        const scaleY = HEIGHT / rect.height;
+        setView((v) => ({ ...v, x: v.x + dx * scaleX, y: v.y + dy * scaleY }));
+        lastX = e.clientX;
+        lastY = e.clientY;
+      }
+    };
+    const onUp = () => {
+      // Let the node onClick (fired on mouseup) see the drag was a pan.
+      setTimeout(() => {
+        draggingRef.current = false;
+      }, 50);
+    };
+
     el.addEventListener("wheel", onWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onWheel);
-  }, [graph]);
+    el.addEventListener("mousedown", onDown);
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    el.addEventListener("mouseleave", onUp);
+
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("mousedown", onDown);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      el.removeEventListener("mouseleave", onUp);
+    };
+  }, [graph, zoomAt]);
 
   // Force a re-render on every simulation tick (positions are mutated in place).
   const [, setTick] = useState(0);
@@ -552,14 +607,14 @@ export default function EvidenceGraph() {
               Reset
             </button>
             <span className="text-xs text-gray-400 dark:text-gray-500">
-              {Math.round(zoomK * 100)}% · scroll or use +/− to zoom
+              {Math.round(view.k * 100)}% · scroll to zoom to cursor, drag to pan
             </span>
           </div>
 
           <svg
             ref={svgRef}
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-            className="w-full h-auto border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-700 dark:bg-gray-800 select-none"
+            className="w-full h-auto border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-700 dark:bg-gray-800 select-none cursor-grab"
             role="img"
             aria-label="Interactive evidence graph: articles, claims, and studies connected by relationship-colored edges"
           >
@@ -578,9 +633,9 @@ export default function EvidenceGraph() {
               </marker>
             </defs>
 
-            {/* Zoom-to-center wrapper for edges + nodes. */}
+            {/* Pan/zoom wrapper for edges + nodes. */}
             <g
-              transform={`translate(${WIDTH / 2} ${HEIGHT / 2}) scale(${zoomK}) translate(${-WIDTH / 2} ${-HEIGHT / 2})`}
+              transform={`translate(${view.x} ${view.y}) scale(${view.k})`}
             >
             {/* Edges */}
             <g>
@@ -613,7 +668,10 @@ export default function EvidenceGraph() {
                   key={node.id}
                   transform={`translate(${node.x ?? 0}, ${node.y ?? 0})`}
                   className="cursor-pointer"
-                  onClick={() => router.push(node.href)}
+                  onClick={() => {
+                    if (draggingRef.current) return; // was a pan, not a click
+                    router.push(node.href);
+                  }}
                 >
                   <title>{node.fullLabel}</title>
                   <circle

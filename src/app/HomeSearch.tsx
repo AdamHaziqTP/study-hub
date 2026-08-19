@@ -392,10 +392,14 @@ export default function HomeSearch() {
               {loading ? "Searching NLM..." : "Search PubMed"}
             </button>
           </form>
+        </div>
 
-          {/* AI-Translated Query Disclosure */}
-          {translatedQuery && !loading && (
-            <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/40">
+        {/* AI-Translated Query Disclosure — BELOW the sticky search bar, in the
+            normal flow (not in the sticky header) so it never blocks the study
+            results while scrolling — especially important on mobile where the
+            translated query can be very tall. */}
+        {translatedQuery && !loading && (
+          <div className="mb-8 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/40">
             <div className="flex items-start gap-3">
               <span className="flex-shrink-0">
                 {wasTranslated ? (
@@ -425,7 +429,6 @@ export default function HomeSearch() {
             </div>
           </div>
         )}
-        </div>
 
         {/* Error state */}
         {error && (
