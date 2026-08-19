@@ -342,27 +342,35 @@ export default function HomeSearch() {
           </div>
         </div>
 
-        {/* Search Bar */}
-        <form onSubmit={handleSearch} className="flex flex-wrap gap-4 mb-4">
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder='Ask a question, e.g. "how many times a week should I train?"'
-            className="flex-1 min-w-[260px] border border-gray-300 bg-white rounded-lg p-4 text-black text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
-          />
-          <button
-            type="submit"
-            disabled={loading}
-            className="bg-blue-600 text-white px-8 py-4 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
-          >
-            {loading ? "Searching NLM..." : "Search PubMed"}
-          </button>
-        </form>
+        {/* Task 18 — Sticky search header: the search bar and the AI-translated
+            query disclosure stick to the top of the viewport while the user
+            scrolls through the paginated results. `sticky top-0` + a high
+            `z-20` keep it above the cards, and the translucent
+            `bg-gray-50/95` + `backdrop-blur` keep the text readable over
+            whatever scrolls underneath on both desktop and mobile.
+            `-mx-8 px-8` bleeds the bar edge-to-edge across the page's outer
+            `p-8` padding so the sticky surface reads as a real header. */}
+        <div className="sticky top-0 z-20 -mx-8 px-8 pt-4 pb-4 mb-6 bg-gray-50/95 backdrop-blur border-b border-gray-200/80 shadow-sm">
+          <form onSubmit={handleSearch} className="flex flex-wrap gap-3">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder='Ask a question, e.g. "how many times a week should I train?"'
+              className="flex-1 min-w-[260px] border border-gray-300 bg-white rounded-lg p-4 text-black text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="bg-blue-600 text-white px-8 py-4 rounded-lg font-semibold hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-sm"
+            >
+              {loading ? "Searching NLM..." : "Search PubMed"}
+            </button>
+          </form>
 
-        {/* AI-Translated Query Disclosure */}
-        {translatedQuery && !loading && (
-          <div className="mb-8 rounded-lg border border-blue-200 bg-blue-50 p-4">
+          {/* AI-Translated Query Disclosure */}
+          {translatedQuery && !loading && (
+            <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
             <div className="flex items-start gap-3">
               <span className="flex-shrink-0">
                 {wasTranslated ? (
@@ -392,6 +400,7 @@ export default function HomeSearch() {
             </div>
           </div>
         )}
+        </div>
 
         {/* Error state */}
         {error && (
