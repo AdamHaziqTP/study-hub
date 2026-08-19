@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import AuthStatus from "@/components/AuthStatus";
 import ThemeToggle from "@/components/ThemeToggle";
 import StudyReferences from "@/components/StudyReferences";
@@ -55,6 +55,14 @@ export default function StudyDetail({
   savedAssessmentSourceInfo = null,
 }: StudyDetailProps) {
   const router = useRouter();
+  // Task: the study URL may carry the originating search query (threaded by
+  // StudyCard), so "Back to search" restores the exact results instead of a
+  // blank home page.
+  const searchParams = useSearchParams();
+  const backQuery = searchParams.get("q");
+  const backHref = backQuery
+    ? `/?q=${encodeURIComponent(backQuery)}`
+    : "/";
 
   // Task 14: library save-state tracked client-side so the Save/Remove button
   // reflects reality immediately; `router.refresh()` then re-renders the server
@@ -321,7 +329,7 @@ export default function StudyDetail({
       <div className="max-w-4xl mx-auto p-8">
         {/* Top bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
-          <Link href="/" className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
+          <Link href={backHref} className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
             ← Back to search
           </Link>
           <div className="flex flex-wrap items-center gap-3">

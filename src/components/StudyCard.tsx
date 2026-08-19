@@ -36,6 +36,9 @@ export interface StudyCardProps {
   abstract: string;
   /** Optional: called after this study is removed from the Library. */
   onRemoved?: (pmid: string) => void;
+  /** Optional: the active search query, threaded onto the study URL so the
+   *  study page's "Back to search" can return to the exact search results. */
+  query?: string;
 }
 
 export default function StudyCard({
@@ -46,6 +49,7 @@ export default function StudyCard({
   publicationDate,
   abstract,
   onRemoved,
+  query,
 }: StudyCardProps) {
   const { visited, hydrated, markVisited } = useVisitedStudies();
   const { saved, loaded, markSaved, markUnsaved } = useSavedStudies();
@@ -128,6 +132,12 @@ export default function StudyCard({
     }
   };
 
+  // Task: thread the active search query onto the study URL so StudyDetail's
+  // "Back to search" can restore the exact results instead of a blank page.
+  const studyHref = query
+    ? `/study/${pmid}?q=${encodeURIComponent(query)}`
+    : `/study/${pmid}`;
+
   return (
     <div
       className={`border rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow ${
@@ -138,7 +148,7 @@ export default function StudyCard({
     >
       <div className="flex items-start justify-between gap-3">
         <Link
-          href={`/study/${pmid}`}
+          href={studyHref}
           onClick={() => markVisited(pmid)}
           className="min-w-0"
         >
@@ -199,7 +209,7 @@ export default function StudyCard({
       </p>
       <div className="flex justify-end">
         <Link
-          href={`/study/${pmid}`}
+          href={studyHref}
           onClick={() => markVisited(pmid)}
           className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-semibold hover:bg-blue-700 transition-colors"
         >

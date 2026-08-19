@@ -486,7 +486,7 @@ export default function HomeSearch() {
             already clicked. */}
         <div className="flex flex-col gap-6">
           {results.map((study) => (
-            <StudyCard key={study.pmid} {...study} />
+            <StudyCard key={study.pmid} {...study} query={urlQuery} />
           ))}
         </div>
 
