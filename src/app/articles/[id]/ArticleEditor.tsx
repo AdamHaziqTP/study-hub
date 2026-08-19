@@ -138,6 +138,17 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
     Record<string, AlignmentState>
   >({});
 
+  // Claims are numbered/ordered by their position in the article (start
+  // offset), not by the order they were highlighted — so Claim 1 is always the
+  // earliest-highlighted text. Unlocated claims sort last.
+  const sortedClaims = useMemo(
+    () =>
+      [...draft.claims].sort(
+        (a, b) => (a.start ?? Number.MAX_SAFE_INTEGER) - (b.start ?? Number.MAX_SAFE_INTEGER)
+      ),
+    [draft.claims]
+  );
+
   // Track what was loaded from the DB so Save can compute INSERTs/UPDATEs/DELETEs.
   const initialClaims = useRef<{ id: string; text: string }[]>([]);
   const initialLinks = useRef<
@@ -818,17 +829,6 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
   }
 
   // ---- Ready + signed in: the editor ----
-  // Claims are numbered/ordered by their position in the article (start
-  // offset), not by the order they were highlighted — so Claim 1 is always the
-  // earliest-highlighted text. Unlocated claims sort last.
-  const sortedClaims = useMemo(
-    () =>
-      [...draft.claims].sort(
-        (a, b) => (a.start ?? Number.MAX_SAFE_INTEGER) - (b.start ?? Number.MAX_SAFE_INTEGER)
-      ),
-    [draft.claims]
-  );
-
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 overflow-x-clip">
       <div className="max-w-6xl mx-auto p-8 lg:h-screen lg:flex lg:flex-col">

@@ -122,6 +122,18 @@ export default function ArticleReader({ articleId }: { articleId: string }) {
     };
   }, [articleId]);
 
+  // Order claims by their position in the article (earliest first), not by DB
+  // insertion order, so Claim 1 is always the earliest-highlighted text.
+  const sortedClaims = useMemo(
+    () =>
+      [...claims].sort((a, b) => {
+        const pa = content.indexOf(a.text);
+        const pb = content.indexOf(b.text);
+        return (pa === -1 ? Number.MAX_SAFE_INTEGER : pa) - (pb === -1 ? Number.MAX_SAFE_INTEGER : pb);
+      }),
+    [claims, content]
+  );
+
   if (loadState === "loading" || loadState === "auth") {
     return (
       <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 overflow-x-clip">
@@ -166,18 +178,6 @@ export default function ArticleReader({ articleId }: { articleId: string }) {
       </div>
     );
   }
-
-  // Order claims by their position in the article (earliest first), not by DB
-  // insertion order, so Claim 1 is always the earliest-highlighted text.
-  const sortedClaims = useMemo(
-    () =>
-      [...claims].sort((a, b) => {
-        const pa = content.indexOf(a.text);
-        const pb = content.indexOf(b.text);
-        return (pa === -1 ? Number.MAX_SAFE_INTEGER : pa) - (pb === -1 ? Number.MAX_SAFE_INTEGER : pb);
-      }),
-    [claims, content]
-  );
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100 overflow-x-clip">
