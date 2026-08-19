@@ -7,6 +7,7 @@ import AuthStatus from "@/components/AuthStatus";
 import StudyReferences from "@/components/StudyReferences";
 import type { PubMedStudy } from "@/lib/pubmed";
 import type { StudyContext, StudySimplification, StudyAssessment } from "@/lib/ai";
+import { decodeEntities } from "@/lib/entities";
 import PersonalNotes from "./PersonalNotes";
 
 interface StudyDetailProps {
@@ -338,12 +339,16 @@ export default function StudyDetail({
 
         {/* Header - the raw study facts */}
         <header className="mb-10">
-          <h1 className="text-3xl font-bold leading-tight mb-3">{study.title}</h1>
+          <h1 className="text-3xl font-bold leading-tight mb-3">
+            {decodeEntities(study.title)}
+          </h1>
           <div className="text-sm text-gray-600 space-y-1">
-            <p>{study.authors}</p>
+            <p>{decodeEntities(study.authors)}</p>
             <p className="italic">
-              {study.journal}
-              {study.publicationDate ? ` · ${study.publicationDate.slice(0, 4)}` : ""}
+              {decodeEntities(study.journal)}
+              {study.publicationDate
+                ? ` · ${decodeEntities(study.publicationDate)}`
+                : ""}
             </p>
             <p className="font-mono text-gray-500">PMID: {study.pmid}</p>
           </div>
@@ -401,7 +406,7 @@ export default function StudyDetail({
             What the study actually says
           </h2>
           <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-line">
-            {study.abstract}
+            {decodeEntities(study.abstract)}
           </p>
         </section>
 

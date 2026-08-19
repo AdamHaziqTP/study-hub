@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useVisitedStudies } from "@/lib/useVisitedStudies";
 import { useSavedStudies } from "@/lib/useSavedStudies";
+import { decodeEntities } from "@/lib/entities";
 
 /**
  * The shared study card used by BOTH the home search results (`HomeSearch`)
@@ -50,6 +51,17 @@ export default function StudyCard({
   const { saved, loaded, markSaved, markUnsaved } = useSavedStudies();
   const isVisited = hydrated && visited.has(pmid);
   const isSaved = loaded && saved.has(pmid);
+
+  // Task 23 — decode HTML entities (&#xb0;, &lt;, &micro;, …) to proper
+  // symbols for display. Task 24 — show the FULL publication date, not just
+  // the year.
+  const displayTitle = decodeEntities(title);
+  const displayAuthors = decodeEntities(authors);
+  const displayJournal = decodeEntities(journal);
+  const displayAbstract = decodeEntities(abstract);
+  const displayDate = publicationDate
+    ? decodeEntities(publicationDate)
+    : null;
 
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -133,7 +145,7 @@ export default function StudyCard({
               isVisited ? "text-blue-800" : "text-gray-900 hover:text-blue-700"
             }`}
           >
-            {title}
+            {displayTitle}
           </h2>
         </Link>
         <div className="flex items-start gap-2 flex-shrink-0">
@@ -175,11 +187,11 @@ export default function StudyCard({
       {saveError && <p className="mt-1 text-sm text-red-600">{saveError}</p>}
 
       <div className="text-sm text-gray-500 mb-4 font-medium">
-        {authors} • <span className="italic">{journal}</span> (
-        {publicationDate?.slice(0, 4) ?? "Unknown year"}) • PMID: {pmid}
+        {displayAuthors} • <span className="italic">{displayJournal}</span> (
+        {displayDate ?? "Unknown date"}) • PMID: {pmid}
       </div>
       <p className="text-gray-700 text-sm line-clamp-3 mb-4 leading-relaxed">
-        {abstract}
+        {displayAbstract}
       </p>
       <div className="flex justify-end">
         <Link
