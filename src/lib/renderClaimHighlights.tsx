@@ -37,20 +37,30 @@ export function renderClaimHighlights(
   for (const m of matches) {
     if (m.start < cursor) continue; // skip overlaps / duplicates
     if (m.start > cursor) nodes.push(content.slice(cursor, m.start));
-    nodes.push(
-      <mark
-        key={`${m.claim.id}-${m.start}`}
-        className="bg-amber-200 text-gray-900 dark:bg-amber-500/30 dark:text-amber-100 rounded px-0.5 py-px cursor-pointer hover:bg-amber-300 dark:hover:bg-amber-500/50"
-        title="Linked claim — click to see its studies"
-        onClick={() =>
-          document
-            .getElementById(`claim-${m.claim.id}`)
-            ?.scrollIntoView({ behavior: "smooth", block: "start" })
-        }
-      >
-        {content.slice(m.start, m.end)}
-      </mark>
-    );
+    // Don't highlight invisible trailing whitespace (e.g. the space after a
+    // period) — render it as plain text after the mark so there's no blocky
+    // overhang at the end of a line.
+    let visibleEnd = m.end;
+    while (visibleEnd > m.start && /\s/.test(content[visibleEnd - 1])) {
+      visibleEnd--;
+    }
+    if (visibleEnd > m.start) {
+      nodes.push(
+        <mark
+          key={`${m.claim.id}-${m.start}`}
+          className="bg-amber-200 text-gray-900 dark:bg-amber-500/30 dark:text-amber-100 rounded px-0.5 py-px cursor-pointer hover:bg-amber-300 dark:hover:bg-amber-500/50"
+          title="Linked claim — click to see its studies"
+          onClick={() =>
+            document
+              .getElementById(`claim-${m.claim.id}`)
+              ?.scrollIntoView({ behavior: "smooth", block: "start" })
+          }
+        >
+          {content.slice(m.start, visibleEnd)}
+        </mark>
+      );
+    }
+    if (visibleEnd < m.end) nodes.push(content.slice(visibleEnd, m.end));
     cursor = m.end;
   }
   if (cursor < content.length) nodes.push(content.slice(cursor));

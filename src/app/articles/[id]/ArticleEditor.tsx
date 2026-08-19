@@ -94,18 +94,28 @@ function renderHighlightRanges(
   for (const r of valid) {
     if (r.start < cursor) continue;
     if (r.start > cursor) nodes.push(content.slice(cursor, r.start));
-    nodes.push(
-      <mark
-        key={r.key}
-        // text-transparent: only the amber background should show behind the
-        // textarea — the textarea renders the actual (crisp) text, so we must
-        // NOT paint a second copy here or it looks blurred from misalignment.
-        className="bg-amber-200 dark:bg-amber-500/30 text-transparent rounded px-0.5 py-px"
-        title="Claim — highlight shown in the article"
-      >
-        {content.slice(r.start, r.end)}
-      </mark>
-    );
+    // Don't paint a background over invisible trailing whitespace (e.g. the
+    // space users grab after a period) — trim it off the mark and render it
+    // as plain, unhighlighted text right after.
+    let visibleEnd = r.end;
+    while (visibleEnd > r.start && /\s/.test(content[visibleEnd - 1])) {
+      visibleEnd--;
+    }
+    if (visibleEnd > r.start) {
+      nodes.push(
+        <mark
+          key={r.key}
+          // text-transparent: only the amber background should show behind the
+          // textarea — the textarea renders the actual (crisp) text, so we must
+          // NOT paint a second copy here or it looks blurred from misalignment.
+          className="bg-amber-200 dark:bg-amber-500/30 text-transparent rounded px-0.5 py-px"
+          title="Claim — highlight shown in the article"
+        >
+          {content.slice(r.start, visibleEnd)}
+        </mark>
+      );
+    }
+    if (visibleEnd < r.end) nodes.push(content.slice(visibleEnd, r.end));
     cursor = r.end;
   }
   nodes.push(content.slice(cursor));
@@ -870,6 +880,12 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
               ref={backdropRef}
               aria-hidden="true"
               className="absolute inset-0 overflow-y-auto p-4 font-sans text-sm leading-relaxed whitespace-pre-wrap break-words text-transparent pointer-events-none [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              style={{
+                fontFamily: "inherit",
+                letterSpacing: "inherit",
+                wordSpacing: "inherit",
+                tabSize: 4,
+              }}
             >
               {renderHighlightRanges(
                 draft.content,
@@ -890,7 +906,13 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {  cons
               }
               rows={16}
               placeholder="Write your conclusion here — the reasoning that ties your claims together... Select a sentence and hit “Turn selection into a claim” to highlight it."
-              className="relative block w-full h-full min-h-[420px] bg-transparent p-4 font-sans text-sm leading-relaxed text-gray-800 dark:text-gray-200 focus:outline-none resize-none overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:min-h-0"
+              className="relative block w-full h-full min-h-[420px] bg-transparent p-4 font-sans text-sm leading-relaxed whitespace-pre-wrap break-words text-gray-800 dark:text-gray-200 focus:outline-none resize-none overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden lg:min-h-0"
+              style={{
+                fontFamily: "inherit",
+                letterSpacing: "inherit",
+                wordSpacing: "inherit",
+                tabSize: 4,
+              }}
             />
           </div>
         </section>
