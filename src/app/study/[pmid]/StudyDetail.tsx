@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthStatus from "@/components/AuthStatus";
+import ThemeToggle from "@/components/ThemeToggle";
 import StudyReferences from "@/components/StudyReferences";
 import type { PubMedStudy } from "@/lib/pubmed";
 import type { StudyContext, StudySimplification, StudyAssessment } from "@/lib/ai";
@@ -316,24 +317,25 @@ export default function StudyDetail({
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
+    <div className="min-h-screen bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
       <div className="max-w-4xl mx-auto p-8">
         {/* Top bar */}
         <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
-          <Link href="/" className="text-sm font-medium text-blue-600 hover:text-blue-800">
+          <Link href="/" className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300">
             ← Back to search
           </Link>
           <div className="flex flex-wrap items-center gap-3">
             <span
               className={`text-xs font-semibold px-3 py-1 rounded-full ${
                 source === "saved"
-                  ? "bg-green-100 text-green-800"
-                  : "bg-blue-100 text-blue-800"
+                  ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300"
+                  : "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300"
               }`}
             >
               {source === "saved" ? "Saved in library" : "Fetched live from PubMed"}
             </span>
             <AuthStatus />
+            <ThemeToggle />
           </div>
         </div>
 
@@ -342,7 +344,7 @@ export default function StudyDetail({
           <h1 className="text-3xl font-bold leading-tight mb-3">
             {decodeEntities(study.title)}
           </h1>
-          <div className="text-sm text-gray-600 space-y-1">
+          <div className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
             <p>{decodeEntities(study.authors)}</p>
             <p className="italic">
               {decodeEntities(study.journal)}
@@ -377,7 +379,7 @@ export default function StudyDetail({
             href={`https://pubmed.ncbi.nlm.nih.gov/${study.pmid}/`}
             target="_blank"
             rel="noopener noreferrer"
-            className="border border-gray-300 bg-white text-gray-700 px-6 py-2.5 rounded-lg font-semibold hover:bg-gray-100 transition-colors text-sm"
+            className="border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-300 px-6 py-2.5 rounded-lg font-semibold hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors text-sm"
           >
             View original on PubMed ↗
           </a>
@@ -402,17 +404,17 @@ export default function StudyDetail({
 
         {/* ============ RAW SOURCE ============ */}
         <section className="mb-10">
-          <h2 className="text-lg font-bold mb-3 pb-2 border-b border-gray-200">
+          <h2 className="text-lg font-bold mb-3 pb-2 border-b border-gray-200 dark:border-gray-800">
             What the study actually says
           </h2>
-          <p className="text-gray-800 text-sm leading-relaxed whitespace-pre-line">
+          <p className="text-gray-800 dark:text-gray-200 text-sm leading-relaxed whitespace-pre-line">
             {decodeEntities(study.abstract)}
           </p>
         </section>
 
         {/* ============ PLAIN-ENGLISH EXPLANATION (Job 2) ============ */}
         <section className="mb-10">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-2 border-b border-gray-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
             <h2 className="text-lg font-bold">In plain English</h2>
             <div className="flex items-center gap-3">
               {simplificationSourceInfo && (
@@ -441,7 +443,7 @@ export default function StudyDetail({
 
 
           {simplificationState === "loading" && (
-            <div className="p-4 rounded-xl border border-gray-200 bg-white animate-pulse">
+            <div className="p-4 rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 animate-pulse">
               <div className="h-3 w-40 bg-gray-200 rounded mb-3" />
               <div className="h-3 w-full bg-gray-100 rounded mb-1.5" />
               <div className="h-3 w-full bg-gray-100 rounded mb-1.5" />
@@ -454,12 +456,12 @@ export default function StudyDetail({
 
           {simplificationState === "done" && simplification ? (
             <div className="p-4 rounded-xl border border-emerald-200 bg-emerald-50">
-              <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line">
+              <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line">
                 {simplification.simplified_text}
               </p>
             </div>
           ) : simplificationState === "idle" ? (
-            <div className="p-4 rounded-xl border border-dashed border-gray-300 bg-white">
+            <div className="p-4 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-white dark:border-gray-600 dark:bg-gray-900">
               <p className="text-sm text-gray-500">
                 A plain-English explanation of this study for a curious lifter —
                 what it tested, who was studied, and what the authors found —
@@ -471,7 +473,7 @@ export default function StudyDetail({
 
         {/* ============ STRUCTURED INTERPRETATION ============ */}
         <section className="mb-10">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-2 border-b border-gray-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
             <h2 className="text-lg font-bold">Study breakdown</h2>
             <div className="flex items-center gap-3">
               {sourceInfo && <SourceInfoBadge sourceInfo={sourceInfo} />}
@@ -502,7 +504,7 @@ export default function StudyDetail({
               {[0, 1, 2, 3].map((i) => (
                 <div
                   key={i}
-                  className="p-4 rounded-xl border border-gray-200 bg-white animate-pulse"
+                  className="p-4 rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 animate-pulse"
                 >
                   <div className="h-3 w-32 bg-gray-200 rounded mb-3" />
                   <div className="h-3 w-full bg-gray-100 rounded mb-1.5" />
@@ -550,7 +552,7 @@ export default function StudyDetail({
 
               <BreakdownSection label="Limitations stated by the paper">
                 {context.limitations ? (
-                  <p className="text-sm text-gray-800">{context.limitations}</p>
+                  <p className="text-sm text-gray-800 dark:text-gray-200">{context.limitations}</p>
                 ) : (
                   <p className="text-sm text-gray-400 italic">
                     None stated in the source.
@@ -559,8 +561,8 @@ export default function StudyDetail({
               </BreakdownSection>
 
               {context.identified_limitations.length > 0 && (
-                <div className="p-4 rounded-xl border border-gray-200 bg-white">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                <div className="p-4 rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+                  <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
                     Identified limitations (AI-derived, each grounded in a stated fact)
                   </h3>
                   <div className="space-y-3">
@@ -569,7 +571,7 @@ export default function StudyDetail({
                         key={i}
                         className="rounded-lg bg-amber-50 border border-amber-200 p-3"
                       >
-                        <p className="text-sm text-gray-800">{item.limitation}</p>
+                        <p className="text-sm text-gray-800 dark:text-gray-200">{item.limitation}</p>
                         <p className="text-xs text-amber-700 mt-1.5">
                           <span className="font-semibold">Based on:</span> "{item.based_on}"
                         </p>
@@ -603,7 +605,7 @@ export default function StudyDetail({
 
         {/* ============ EVIDENCE CONTEXT (Job 3 / Task 10) ============ */}
         <section className="mb-10">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-2 border-b border-gray-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
             <h2 className="text-lg font-bold">Evidence context</h2>
             <div className="flex items-center gap-3">
               {assessmentSourceInfo && (
@@ -636,7 +638,7 @@ export default function StudyDetail({
               {[0, 1, 2].map((i) => (
                 <div
                   key={i}
-                  className="p-4 rounded-xl border border-gray-200 bg-white animate-pulse"
+                  className="p-4 rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 animate-pulse"
                 >
                   <div className="h-3 w-40 bg-gray-200 rounded mb-3" />
                   <div className="h-3 w-full bg-gray-100 rounded mb-1.5" />
@@ -681,7 +683,7 @@ export default function StudyDetail({
               </p>
             </div>
           ) : assessmentState === "idle" ? (
-            <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white">
+            <div className="p-5 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-white dark:border-gray-600 dark:bg-gray-900">
               <p className="text-sm text-gray-500">
                 This section will surface the factors that affect how broadly this
                 study can be interpreted - sample size, study design, population,
@@ -695,7 +697,7 @@ export default function StudyDetail({
 
         {/* ============ APPLICATION (Job 3 / Task 10) ============ */}
         <section className="mb-10">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-2 border-b border-gray-200">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
             <h2 className="text-lg font-bold">What this might mean for training</h2>
             <div className="flex items-center gap-3">
               {assessmentState === "done" && (
@@ -716,11 +718,11 @@ export default function StudyDetail({
           {assessmentState === "done" && assessment ? (
             <div className="space-y-3">
               <div className="p-4 rounded-xl border border-amber-200 bg-amber-50">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                   If this generalises, it might suggest...
                 </h3>
                 {assessment.training_application ? (
-                  <p className="text-sm text-gray-800 leading-relaxed">
+                  <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">
                     {assessment.training_application}
                   </p>
                 ) : (
@@ -730,11 +732,11 @@ export default function StudyDetail({
                 )}
               </div>
               <div className="p-4 rounded-xl border border-red-200 bg-red-50">
-                <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
                   What this does NOT mean
                 </h3>
                 {assessment.training_cautions ? (
-                  <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-line">
+                  <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed whitespace-pre-line">
                     {assessment.training_cautions}
                   </p>
                 ) : (
@@ -749,7 +751,7 @@ export default function StudyDetail({
               </p>
             </div>
           ) : assessmentState === "idle" ? (
-            <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white">
+            <div className="p-5 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-white dark:border-gray-600 dark:bg-gray-900">
               <p className="text-sm text-gray-500">
                 This section will translate the findings into practical training
                 considerations - clearly labelled as <em>interpretation</em>, with
@@ -761,13 +763,13 @@ export default function StudyDetail({
 
         {/* ============ REFERENCES IN ARTICLES (Task 7) ============ */}
         <section className="mb-10">
-          <h2 className="text-lg font-bold mb-4 pb-2 border-b border-gray-200">
+          <h2 className="text-lg font-bold mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
             References in your articles
           </h2>
           {studyId ? (
             <StudyReferences studyId={studyId} />
           ) : (
-            <div className="p-5 rounded-xl border border-dashed border-gray-300 bg-white">
+            <div className="p-5 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 bg-white dark:border-gray-600 dark:bg-gray-900">
               <p className="text-sm text-gray-500">
                 Save this study to the library first — articles can only link
                 claims to studies that are saved.
@@ -778,7 +780,7 @@ export default function StudyDetail({
 
         {/* ============ PERSONAL NOTES (Task 6) ============ */}
         <section>
-          <h2 className="text-lg font-bold mb-4 pb-2 border-b border-gray-200">
+          <h2 className="text-lg font-bold mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
             Personal notes
           </h2>
           <PersonalNotes studyId={studyId} pmid={study.pmid} />
@@ -811,7 +813,7 @@ function FieldRow({ label, value }: { label: string; value: string | number | nu
         {label}
       </span>
       {value !== null && value !== "" ? (
-        <span className="text-sm text-gray-800">{value}</span>
+        <span className="text-sm text-gray-800 dark:text-gray-200">{value}</span>
       ) : (
         <span className="text-sm text-gray-400 italic">Not stated in the source</span>
       )}
@@ -827,8 +829,8 @@ function BreakdownSection({
   children: React.ReactNode;
 }) {
   return (
-    <div className="p-4 rounded-xl border border-gray-200 bg-white">
-      <h3 className="text-sm font-semibold text-gray-700 mb-2">{label}</h3>
+    <div className="p-4 rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">{label}</h3>
       {children}
     </div>
   );
@@ -842,7 +844,7 @@ function AssessmentFactor({ label, value }: { label: string; value: string | nul
         {label}
       </h3>
       {value ? (
-        <p className="text-sm text-gray-800 leading-relaxed">{value}</p>
+        <p className="text-sm text-gray-800 dark:text-gray-200 leading-relaxed">{value}</p>
       ) : (
         <p className="text-sm text-gray-400 italic">Not provided.</p>
       )}

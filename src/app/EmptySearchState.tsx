@@ -44,9 +44,11 @@ export default function EmptySearchState({
   onExample: (query: string) => void;
 }) {
   return (
-    <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm">
-      <h2 className="text-2xl font-bold text-gray-900">What is Study Hub?</h2>
-      <p className="mt-3 text-gray-700 leading-relaxed">
+    <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-8 shadow-sm dark:border-gray-700 dark:bg-gray-900">
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+        What is Study Hub?
+      </h2>
+      <p className="mt-3 text-gray-700 leading-relaxed dark:text-gray-300">
         Study Hub helps evidence-curious lifters search, read, and critically
         interpret exercise-science research. Ask a question below (or tap an
         example) to get relevance-ranked PubMed results — each study opens with
@@ -55,7 +57,7 @@ export default function EmptySearchState({
       </p>
 
       <div className="mt-6">
-        <p className="text-sm font-semibold text-gray-800 mb-2">
+        <p className="text-sm font-semibold text-gray-800 mb-2 dark:text-gray-200">
           Try one of these questions
         </p>
         <div className="flex flex-wrap gap-2">
@@ -64,7 +66,7 @@ export default function EmptySearchState({
               key={ex.query}
               type="button"
               onClick={() => onExample(ex.query)}
-              className="inline-flex items-center gap-1.5 border border-blue-200 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full text-sm font-medium hover:bg-blue-100 hover:border-blue-300 transition-colors"
+              className="inline-flex items-center gap-1.5 border border-blue-200 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full text-sm font-medium hover:bg-blue-100 hover:border-blue-300 transition-colors dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/40 dark:hover:border-blue-800"
             >
               {ex.label} →
             </button>
@@ -72,14 +74,21 @@ export default function EmptySearchState({
         </div>
       </div>
 
-      <div className="mt-6 border-t border-gray-100 pt-4 text-sm text-gray-600 leading-relaxed">
+      <div className="mt-6 border-t border-gray-100 pt-4 text-sm text-gray-600 leading-relaxed dark:border-gray-800 dark:text-gray-400">
         <p>
           Found something useful?{" "}
-          <span className="font-medium text-gray-800">Save it to your Library</span>{" "}
+          <span className="font-medium text-gray-800 dark:text-gray-200">
+            Save it to your Library
+          </span>{" "}
           for later, add{" "}
-          <span className="font-medium text-gray-800">personal notes</span> on
-          the study page, and collect your evidence-backed conclusions in the{" "}
-          <span className="font-medium text-gray-800">Evidence Notebook</span>.
+          <span className="font-medium text-gray-800 dark:text-gray-200">
+            personal notes
+          </span>{" "}
+          on the study page, and collect your evidence-backed conclusions in the{" "}
+          <span className="font-medium text-gray-800 dark:text-gray-200">
+            Evidence Notebook
+          </span>
+          .
         </p>
       </div>
     </div>

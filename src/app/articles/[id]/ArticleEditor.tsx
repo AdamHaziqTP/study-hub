@@ -573,7 +573,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
   // ---- Unauthenticated ----
   if (loadState === "auth") {
     return (
-      <div className="p-6 rounded-xl border border-gray-200 bg-white animate-pulse">
+      <div className="p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white animate-pulse">
         <div className="h-8 w-1/2 bg-gray-200 rounded mb-4" />
         <div className="h-4 w-full bg-gray-100 rounded mb-2" />
         <div className="h-4 w-3/4 bg-gray-100 rounded" />
@@ -583,8 +583,8 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
 
   if (loadState === "ready" && !userId) {
     return (
-      <div className="p-12 rounded-xl border border-dashed border-gray-300 bg-white text-center">
-        <p className="text-lg font-semibold text-gray-700 mb-2">
+      <div className="p-12 rounded-xl border border-dashed border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 text-center">
+        <p className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
           Log in to edit this article
         </p>
         <button
@@ -601,8 +601,8 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
   // ---- Not found / no access ----
   if (loadState === "notfound") {
     return (
-      <div className="p-12 rounded-xl border border-dashed border-gray-300 bg-white text-center">
-        <p className="text-lg font-semibold text-gray-700 mb-2">
+      <div className="p-12 rounded-xl border border-dashed border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 text-center">
+        <p className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
           Article not found
         </p>
         <p className="text-sm text-gray-500 mb-6">
@@ -637,7 +637,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
 
   // ---- Ready + signed in: the editor ----
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900">
+    <div className="min-h-screen bg-gray-50 text-gray-900 dark:text-gray-100 dark:bg-gray-950 dark:text-gray-100">
       <div className="max-w-4xl mx-auto p-8">
         <div className="flex items-center justify-between mb-8">
           <Link href="/articles" className="text-sm font-medium text-blue-600 hover:text-blue-800">
@@ -652,7 +652,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
               value={draft.title}
               onChange={(e) => updateDraft({ title: e.target.value })}
               placeholder="Article title"
-              className="w-full text-3xl font-bold leading-tight bg-transparent border-b-2 border-gray-200 focus:border-blue-500 focus:outline-none pb-2 text-gray-900"
+              className="w-full text-3xl font-bold leading-tight bg-transparent border-b-2 border-gray-200 dark:border-gray-700 focus:border-blue-500 focus:outline-none pb-2 text-gray-900 dark:text-gray-100"
             />
           </div>
           <button
@@ -685,7 +685,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
             onChange={(e) => updateDraft({ content: e.target.value })}
             rows={8}
             placeholder="Write your conclusion here — the reasoning that ties your claims together..."
-            className="w-full border border-gray-300 bg-white rounded-lg p-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+            className="w-full border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 rounded-lg p-3 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
           />
         </section>
 
@@ -707,7 +707,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
           </div>
 
           {draft.claims.length === 0 ? (
-            <div className="p-8 rounded-xl border border-dashed border-gray-300 bg-white text-center">
+            <div className="p-8 rounded-xl border border-dashed border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 text-center">
               <p className="text-sm text-gray-500">
                 No claims yet. A claim is a single statement in your article —
                 each one can be linked to the studies that support or
@@ -719,7 +719,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
               {draft.claims.map((claim, index) => (
                 <div
                   key={claim.key}
-                  className="p-5 rounded-xl border border-gray-200 bg-white"
+                  className="p-5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white"
                 >
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">
@@ -738,7 +738,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
                     onChange={(e) => updateClaimText(claim.key, e.target.value)}
                     rows={2}
                     placeholder="e.g. Overhead triceps extensions produce greater long-head hypertrophy than neutral-position extensions."
-                    className="w-full border border-gray-300 bg-white rounded-lg p-3 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y mb-4"
+                    className="w-full border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 rounded-lg p-3 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y mb-4"
                   />
 
                   {/* Alignment check (Task 9) */}
@@ -759,7 +759,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
                             ? "Link at least one study to check alignment"
                             : "Check whether this claim accurately represents its linked studies"
                         }
-                        className="text-xs font-semibold border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="text-xs font-semibold border border-gray-300 rounded-lg px-3 py-1.5 bg-white text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         {alignmentByClaim[claim.key]?.status === "loading"
                           ? "Checking..."
@@ -792,7 +792,7 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
                             >
                               {ALIGNMENT_LABELS[state.result.verdict]}
                             </span>
-                            <p className="text-xs text-gray-600 leading-relaxed">
+                            <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
                               {state.result.reasoning}
                             </p>
                           </div>
@@ -815,13 +815,13 @@ export default function ArticleEditor({ articleId }: ArticleEditorProps) {
                         {claim.links.map((link) => (
                           <div
                             key={link.key}
-                            className="flex items-center justify-between gap-3 border border-gray-200 rounded-lg p-2.5"
+                            className="flex items-center justify-between gap-3 border border-gray-200 dark:border-gray-700 rounded-lg p-2.5"
                           >
                             <div className="min-w-0">
                               <Link
                                 href={`/study/${link.studyPmid}`}
                                 target="_blank"
-                                className="text-sm font-medium text-gray-800 hover:text-blue-700 transition-colors line-clamp-1"
+                                className="text-sm font-medium text-gray-800 dark:text-gray-200 hover:text-blue-700 transition-colors line-clamp-1"
                               >
                                 {link.studyTitle}
                               </Link>
@@ -906,12 +906,12 @@ function StudyPicker({
   );
 
   return (
-    <div className="border border-gray-200 rounded-lg bg-gray-50 p-3">
+    <div className="border border-gray-200 dark:border-gray-700 rounded-lg bg-gray-50 dark:bg-gray-800 p-3">
       <input
         value={search}
         onChange={(e) => onSearch(e.target.value)}
         placeholder="Search saved studies to link (by title, PMID, or journal)..."
-        className="w-full border border-gray-300 bg-white rounded-lg p-2.5 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
+        className="w-full border border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 rounded-lg p-2.5 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
       />
       {visible.length === 0 ? (
         <p className="text-xs text-gray-400 italic px-1">
@@ -926,10 +926,10 @@ function StudyPicker({
           {visible.map((study) => (
             <div
               key={study.id}
-              className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-white px-3 py-2"
+              className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white px-3 py-2"
             >
               <div className="min-w-0">
-                <p className="text-sm text-gray-800 font-medium line-clamp-1">
+                <p className="text-sm text-gray-800 dark:text-gray-200 font-medium line-clamp-1">
                   {study.title}
                 </p>
                 <p className="text-xs text-gray-400 font-mono">

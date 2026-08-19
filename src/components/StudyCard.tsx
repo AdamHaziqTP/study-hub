@@ -131,7 +131,9 @@ export default function StudyCard({
   return (
     <div
       className={`border rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow ${
-        isVisited ? "border-blue-200 bg-blue-50/50" : "border-gray-200 bg-white"
+        isVisited
+          ? "border-blue-200 bg-blue-50/50 dark:border-blue-900 dark:bg-blue-950/40"
+          : "border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
@@ -142,7 +144,9 @@ export default function StudyCard({
         >
           <h2
             className={`text-xl font-semibold mb-2 leading-snug transition-colors ${
-              isVisited ? "text-blue-800" : "text-gray-900 hover:text-blue-700"
+              isVisited
+                ? "text-blue-800 dark:text-blue-300"
+                : "text-gray-900 hover:text-blue-700 dark:text-gray-100 dark:hover:text-blue-400"
             }`}
           >
             {displayTitle}
@@ -165,7 +169,7 @@ export default function StudyCard({
                 ? "text-blue-300 cursor-wait"
                 : isSaved
                 ? "text-blue-600"
-                : "text-gray-400 hover:text-blue-600"
+                : "text-gray-400 hover:text-blue-600 dark:text-gray-500 dark:hover:text-blue-400"
             }`}
           >
             <svg
@@ -186,11 +190,11 @@ export default function StudyCard({
 
       {saveError && <p className="mt-1 text-sm text-red-600">{saveError}</p>}
 
-      <div className="text-sm text-gray-500 mb-4 font-medium">
+      <div className="text-sm text-gray-500 mb-4 font-medium dark:text-gray-400">
         {displayAuthors} • <span className="italic">{displayJournal}</span> (
         {displayDate ?? "Unknown date"}) • PMID: {pmid}
       </div>
-      <p className="text-gray-700 text-sm line-clamp-3 mb-4 leading-relaxed">
+      <p className="text-gray-700 text-sm line-clamp-3 mb-4 leading-relaxed dark:text-gray-300">
         {displayAbstract}
       </p>
       <div className="flex justify-end">

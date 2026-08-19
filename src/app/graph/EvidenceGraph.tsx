@@ -365,11 +365,11 @@ export default function EvidenceGraph() {
   // ---- Unauthenticated ----
   if (!authLoading && !userId) {
     return (
-      <div className="p-12 rounded-xl border border-dashed border-gray-300 bg-white text-center">
-        <p className="text-lg font-semibold text-gray-700 mb-2">
+      <div className="p-12 rounded-xl border border-dashed border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 text-center">
+        <p className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
           Log in to view your evidence graph
         </p>
-        <p className="text-sm text-gray-500 mb-6 max-w-md mx-auto">
+        <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-6 max-w-md mx-auto">
           Visualize how your articles, claims, and saved studies connect — with
           supports, contradicts, mixed, and contextual relationships as colored
           edges.
@@ -391,7 +391,7 @@ export default function EvidenceGraph() {
         {[0, 1, 2].map((i) => (
           <div
             key={i}
-            className="p-6 rounded-xl border border-gray-200 bg-white animate-pulse"
+            className="p-6 rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 animate-pulse"
           >
             <div className="h-4 w-1/2 bg-gray-200 rounded mb-3" />
             <div className="h-3 w-3/4 bg-gray-100 rounded" />
@@ -404,11 +404,11 @@ export default function EvidenceGraph() {
   // ---- Empty state ----
   if (!loading && graph && graph.nodes.length === 0) {
     return (
-      <div className="border border-dashed border-gray-300 bg-white rounded-xl p-12 text-center">
-        <p className="text-lg font-semibold text-gray-700 mb-2">
+      <div className="border border-dashed border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-900 rounded-xl p-12 text-center">
+        <p className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
           No evidence graph yet
         </p>
-        <p className="text-sm text-gray-500 mb-6">
+        <p className="text-sm text-gray-500 dark:text-gray-400 dark:text-gray-500 mb-6">
           Write an article, add a claim, and link it to a study. Your graph
           appears here automatically.
         </p>
@@ -424,7 +424,7 @@ export default function EvidenceGraph() {
 
   // ---- Ready: render the SVG ----
   return (
-    <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+    <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900 p-4 shadow-sm">
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
           {error}
@@ -435,18 +435,18 @@ export default function EvidenceGraph() {
         <>
           {/* Legend */}
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mb-3">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+            <span className="text-xs font-semibold text-gray-500 dark:text-gray-400 dark:text-gray-500 uppercase tracking-wide">
               Legend
             </span>
-            <span className="flex items-center gap-1.5 text-xs text-gray-600">
+            <span className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
               <span className="inline-block w-3 h-3 rounded-full bg-violet-600" />
               Article
             </span>
-            <span className="flex items-center gap-1.5 text-xs text-gray-600">
+            <span className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
               <span className="inline-block w-3 h-3 rounded-full bg-gray-800" />
               Claim
             </span>
-            <span className="flex items-center gap-1.5 text-xs text-gray-600">
+            <span className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500">
               <span className="inline-block w-3 h-3 rounded-full bg-blue-600" />
               Study
             </span>
@@ -454,7 +454,7 @@ export default function EvidenceGraph() {
               (r) => (
                 <span
                   key={r}
-                  className="flex items-center gap-1.5 text-xs text-gray-600"
+                  className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 dark:text-gray-500"
                 >
                   <span
                     className="inline-block w-4"
@@ -464,7 +464,7 @@ export default function EvidenceGraph() {
                 </span>
               )
             )}
-            <span className="ml-auto text-xs text-gray-400">
+            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">
               {graph.counts.articles} article
               {graph.counts.articles === 1 ? "" : "s"} ·{" "}
               {graph.counts.claims} claim
@@ -478,7 +478,7 @@ export default function EvidenceGraph() {
 
           <svg
             viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-            className="w-full h-auto border border-gray-200 rounded-lg bg-gray-50 select-none"
+            className="w-full h-auto border border-gray-200 rounded-lg bg-gray-50 dark:border-gray-700 dark:bg-gray-800 select-none"
             role="img"
             aria-label="Interactive evidence graph: articles, claims, and studies connected by relationship-colored edges"
           >
@@ -555,7 +555,7 @@ export default function EvidenceGraph() {
             </g>
           </svg>
 
-          <p className="mt-3 text-xs text-gray-400">
+          <p className="mt-3 text-xs text-gray-400 dark:text-gray-500">
             Click any node to open its article editor or study page. Positions
             are computed live by d3-force.
           </p>

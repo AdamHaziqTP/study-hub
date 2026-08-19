@@ -1,22 +1,25 @@
 @import "tailwindcss";
 
+/*
+ * Task 25 — Dark mode toggle (roadmap #13).
+ *
+ * Tailwind v4 defaults the `dark:` variant to `prefers-color-scheme`. To let
+ * the user toggle the theme manually (and persist it), we switch to a
+ * CLASS-based variant: `dark:` now applies only under `html.dark`. A tiny
+ * inline script in layout.tsx sets `.dark` before paint (from localStorage,
+ * falling back to the OS preference) so there's no flash of the wrong theme.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  color-scheme: dark;
 }
 
 body {

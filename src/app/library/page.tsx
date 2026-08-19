@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import AuthStatus from "@/components/AuthStatus";
+import ThemeToggle from "@/components/ThemeToggle";
 import LibraryList from "./LibraryList";
 import { supabase } from "@/lib/supabase";
 
@@ -64,27 +65,28 @@ export default async function LibraryPage() {
   }));
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans">
+    <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans dark:bg-gray-950 dark:text-gray-100">
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
-          <h1 className="text-4xl font-bold text-gray-900">Library</h1>
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">Library</h1>
           <div className="flex items-center gap-4">
             <AuthStatus />
+            <ThemeToggle />
             <Link
               href="/articles"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
             >
               My Articles →
             </Link>
             <Link
               href="/graph"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
             >
               Evidence Graph →
             </Link>
             <Link
               href="/"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
             >
               ← Back to search
             </Link>
@@ -92,7 +94,7 @@ export default async function LibraryPage() {
         </div>
 
         {error ? (
-          <div className="border border-red-200 bg-red-50 rounded-xl p-6 text-red-700 text-sm">
+          <div className="border border-red-200 bg-red-50 rounded-xl p-6 text-red-700 text-sm dark:border-red-900 dark:bg-red-950/40 dark:text-red-400">
             Failed to load the library. Please try again later.
           </div>
         ) : (

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import AuthStatus from "@/components/AuthStatus";
+import ThemeToggle from "@/components/ThemeToggle";
 import Link from "next/link";
 import ArticlesList from "./ArticlesList";
 
@@ -28,21 +29,22 @@ export const dynamic = "force-dynamic";
 
 export default function ArticlesPage() {
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans">
+    <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans dark:bg-gray-950 dark:text-gray-100">
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-3 mb-8">
-          <h1 className="text-4xl font-bold text-gray-900">My Articles</h1>
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">My Articles</h1>
           <div className="flex items-center gap-4">
             <AuthStatus />
+            <ThemeToggle />
             <Link
               href="/graph"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
             >
               Evidence Graph →
             </Link>
             <Link
               href="/"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
             >
               ← Back to search
             </Link>

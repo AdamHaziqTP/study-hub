@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AuthStatus from "@/components/AuthStatus";
+import ThemeToggle from "@/components/ThemeToggle";
 import StudyCard from "@/components/StudyCard";
 import EmptySearchState, { EXAMPLE_QUERIES } from "./EmptySearchState";
 
@@ -338,27 +339,30 @@ export default function HomeSearch() {
     (totalResults === null || results.length < totalResults);
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans">
+    <div className="min-h-screen bg-gray-50 text-gray-900 p-8 font-sans dark:bg-gray-950 dark:text-gray-100">
       <div className="max-w-5xl mx-auto">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-          <h1 className="text-4xl font-bold text-gray-900">Evidence Hub</h1>
+          <h1 className="text-4xl font-bold text-gray-900 dark:text-gray-100">
+            Evidence Hub
+          </h1>
           <div className="flex items-center gap-4 flex-wrap">
             <AuthStatus />
+            <ThemeToggle />
             <Link
               href="/library"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
             >
               Library →
             </Link>
             <Link
               href="/articles"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
             >
               My Articles →
             </Link>
             <Link
               href="/graph"
-              className="text-sm font-medium text-blue-600 hover:text-blue-800"
+              className="text-sm font-medium text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
             >
               Evidence Graph →
             </Link>
@@ -373,14 +377,14 @@ export default function HomeSearch() {
             whatever scrolls underneath on both desktop and mobile.
             `-mx-8 px-8` bleeds the bar edge-to-edge across the page's outer
             `p-8` padding so the sticky surface reads as a real header. */}
-        <div className="sticky top-0 z-20 -mx-8 px-8 pt-4 pb-4 mb-6 bg-gray-50/95 backdrop-blur border-b border-gray-200/80 shadow-sm">
+        <div className="sticky top-0 z-20 -mx-8 px-8 pt-4 pb-4 mb-6 bg-gray-50/95 backdrop-blur border-b border-gray-200/80 shadow-sm dark:bg-gray-950/95 dark:border-gray-800">
           <form onSubmit={handleSearch} className="flex flex-wrap gap-3">
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder='Ask a question, e.g. "how many times a week should I train?"'
-              className="flex-1 min-w-[260px] border border-gray-300 bg-white rounded-lg p-4 text-black text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm"
+              className="flex-1 min-w-[260px] border border-gray-300 bg-white rounded-lg p-4 text-black text-lg focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-sm dark:border-gray-700 dark:bg-gray-900 dark:text-white"
             />
             <button
               type="submit"
@@ -393,7 +397,7 @@ export default function HomeSearch() {
 
           {/* AI-Translated Query Disclosure */}
           {translatedQuery && !loading && (
-            <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-900 dark:bg-blue-950/40">
             <div className="flex items-start gap-3">
               <span className="flex-shrink-0">
                 {wasTranslated ? (
@@ -406,15 +410,15 @@ export default function HomeSearch() {
                   </span>
                 )}
               </span>
-              <div className="text-sm text-gray-800">
+              <div className="text-sm text-gray-800 dark:text-gray-100">
                 <p className="font-mono break-words leading-relaxed">
                   {translatedQuery}
                 </p>
                 {wasTranslated && explanation && (
-                  <p className="mt-1 text-gray-600">{explanation}</p>
+                  <p className="mt-1 text-gray-600 dark:text-gray-400">{explanation}</p>
                 )}
                 {!wasTranslated && (
-                  <p className="mt-1 text-gray-600">
+                  <p className="mt-1 text-gray-600 dark:text-gray-400">
                     The AI query translation was unavailable, so your text was
                     searched as-is.
                   </p>
@@ -442,16 +446,16 @@ export default function HomeSearch() {
         {/* Task 19 — Zero-results state: a search ran (urlQuery set) but PubMed
             returned nothing. Distinct from the empty pre-search state above. */}
         {urlQuery && !loading && !error && results.length === 0 && (
-          <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm">
+          <div className="mt-8 rounded-2xl border border-gray-200 bg-white p-8 text-center shadow-sm dark:border-gray-700 dark:bg-gray-900">
             <p className="text-3xl" aria-hidden>
               🔍
             </p>
-            <h2 className="mt-3 text-xl font-bold text-gray-900">
+            <h2 className="mt-3 text-xl font-bold text-gray-900 dark:text-gray-100">
               No results found
             </h2>
-            <p className="mt-2 text-gray-600 leading-relaxed">
+            <p className="mt-2 text-gray-600 leading-relaxed dark:text-gray-400">
               Nothing came back for{" "}
-              <span className="font-mono text-gray-800 break-words">
+              <span className="font-mono text-gray-800 break-words dark:text-gray-200">
                 {urlQuery}
               </span>
               . Try rephrasing, using simpler terms, or checking the
@@ -459,14 +463,16 @@ export default function HomeSearch() {
               <span className="font-semibold">ranks, never filters</span>, so
               if PubMed has no hits for this query, nothing is hidden.
             </p>
-            <p className="mt-4 text-sm text-gray-500">Or try one of these:</p>
+            <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+              Or try one of these:
+            </p>
             <div className="mt-3 flex flex-wrap justify-center gap-2">
               {EXAMPLE_QUERIES.map((ex) => (
                 <button
                   key={ex.query}
                   type="button"
                   onClick={() => handleExampleSearch(ex.query)}
-                  className="inline-flex items-center gap-1.5 border border-blue-200 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full text-sm font-medium hover:bg-blue-100 hover:border-blue-300 transition-colors"
+                  className="inline-flex items-center gap-1.5 border border-blue-200 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-full text-sm font-medium hover:bg-blue-100 hover:border-blue-300 transition-colors dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300 dark:hover:bg-blue-900/40 dark:hover:border-blue-800"
                 >
                   {ex.label} →
                 </button>

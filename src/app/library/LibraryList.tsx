@@ -26,11 +26,11 @@ export default function LibraryList({
 
   if (items.length === 0) {
     return (
-      <div className="border border-dashed border-gray-300 bg-white rounded-xl p-12 text-center">
-        <p className="text-lg font-semibold text-gray-700 mb-2">
+      <div className="border border-dashed border-gray-300 bg-white rounded-xl p-12 text-center dark:border-gray-700 dark:bg-gray-900">
+        <p className="text-lg font-semibold text-gray-700 mb-2 dark:text-gray-200">
           No saved studies yet
         </p>
-        <p className="text-sm text-gray-500 mb-6">
+        <p className="text-sm text-gray-500 mb-6 dark:text-gray-400">
           Go search PubMed and save studies to build your library.
         </p>
         <Link
@@ -45,7 +45,7 @@ export default function LibraryList({
 
   return (
     <>
-      <p className="text-sm text-gray-500 mb-6">
+      <p className="text-sm text-gray-500 mb-6 dark:text-gray-400">
         {items.length} saved {items.length === 1 ? "study" : "studies"}
       </p>
       <div className="flex flex-col gap-6">
