@@ -311,6 +311,7 @@ All of this is **committed and pushed** to GitHub (`main`).
   - **Balanced forces:** `forceManyBody` charge reduced **−2500 → −1000**; `forceLink` distance reduced **500/620 → 250/350**; a stronger `forceX(WIDTH/2)` (0.12) gently pulls the cluster back to centre while the hierarchical `forceY` (strength 0.3) still holds articles top / claims middle / studies bottom.
   - **Collision:** kept radius-aware `forceCollide(radius + 20)`.
   - Verified `tsc --noEmit` clean AND `npm run build` passes.
+- ✅ **Editor backdrop blur fixed (transparent highlight text)** — the "blurry/drop-shadow" text in the article editor was the classic backdrop-highlight bug: the `<mark>` elements inside the mirrored background div were painting a *visible* second copy of the text, which misaligned by a subpixel against the `<textarea>` text. Fixed by making the editor's highlight `<mark>`s `text-transparent` (only their amber background shows; the textarea renders the single crisp copy of the text). The graph physics from the prior step (overflow-hidden, radius-aware clamp, charge −1000, link distance 250/350, collide +20, forceX centring) were already balanced/contained and left unchanged. Verified `tsc --noEmit` clean AND `npm run build` passes.
 - ✅ Living doc (this file)
 
 **Editor note:** if VS Code shows "Cannot find module './StudyDetail'", it's a stale TS-server cache — the file exists and `tsc` resolves it. Restart the TS server (or save any file) to clear it.

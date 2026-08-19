@@ -97,13 +97,11 @@ function renderHighlightRanges(
     nodes.push(
       <mark
         key={r.key}
-        className="bg-amber-200 text-gray-900 dark:bg-amber-500/30 dark:text-amber-100 rounded px-0.5 py-px cursor-pointer hover:bg-amber-300 dark:hover:bg-amber-500/50"
-        title="Claim — click to see its studies"
-        onClick={() =>
-          document
-            .getElementById(`claim-${r.key}`)
-            ?.scrollIntoView({ behavior: "smooth", block: "start" })
-        }
+        // text-transparent: only the amber background should show behind the
+        // textarea — the textarea renders the actual (crisp) text, so we must
+        // NOT paint a second copy here or it looks blurred from misalignment.
+        className="bg-amber-200 dark:bg-amber-500/30 text-transparent rounded px-0.5 py-px"
+        title="Claim — highlight shown in the article"
       >
         {content.slice(r.start, r.end)}
       </mark>
